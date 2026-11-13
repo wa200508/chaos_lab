@@ -2,6 +2,32 @@
 
 A local-first visual exploration environment for chaotic systems. The static site bundles all runtime libraries and stores each visitor's Git repository in IndexedDB. Working tabs and recoverable closed drafts are stored in localStorage.
 
+## See a system in action
+
+The screenshots below show the running dashboard with **10,000 samples**, **seed 42**, and **12 feedback iterations**. The model applies the logistic rule `x[n+1] = r * x[n] * (1 - x[n])` to uniformly distributed initial conditions.
+
+### Build a feedback system and watch its distributions
+
+A uniform random source feeds a logistic function, a growth-rate block controls `r`, and a unit delay closes the feedback loop. Taps display the input and output distributions beside the model. The inspector shows the symbolic derivative and output statistics; the Git panel keeps the exploration history in view.
+
+![Running logistic-map workspace with connected blocks, input and output histograms, a symbolic function inspector, and Git history](docs/screenshots/logistic-map-workspace.png)
+
+### Inspect a chaotic run
+
+At **r = 3.9**, the output spreads across a broad, uneven distribution. The expanded Simulation panel shows the run settings, mean, compute time, and a trace of the first 150 output samples. This trace compares ensemble samples, rather than following a single trajectory through time.
+
+![Chaotic logistic-map simulation at growth rate 3.9, with live histograms, output statistics, and the expanded output-sample trace](docs/screenshots/chaotic-simulation.png)
+
+### Change one parameter and see a two-cycle emerge
+
+Changing the growth rate to **r = 3.2**, with the same seed and initial input distribution, concentrates the output around two values. The output histogram and statistics update directly from the model.
+
+![Logistic map at growth rate 3.2 showing two concentrated peaks in the output distribution and a corresponding output-sample trace](docs/screenshots/period-two-simulation.png)
+
+To reproduce these views, open the Logistic exploration model, select the Logistic map block, change **Growth rate**, and click **Run simulation**. Open **Simulation** and expand the bottom panel to inspect the complete sample trace.
+
+[Open the deployed dashboard](https://chaos-lab-studio.sunsetsaffron1.chatgpt.site) · Private deployment; access is required. You can also run the bundled app locally using the instructions below.
+
 ## Develop and verify
 
 ```sh
@@ -27,4 +53,4 @@ Serve `dist/` with a static HTTP server. No application server or environment se
 
 This is a functional prototype. SysML is a generated textual representation, not a validated or executable SysML 2.0 implementation. The executable graph remains in JSON. Full SysML interchange/import, symbolic probability-density propagation, advanced solvers, and remote Git authentication/sync are not implemented. Beta sampling currently accepts positive integer shape parameters. A visitor's model repository is device-local; export it before clearing browser data. Remote Git can be used with the downloaded repository through standard Git tooling.
 
-Unit tests cover the simulation, symbolic transformations, error handling, Git object storage, branches, and export. A DOM interaction smoke test covers the primary editing and versioning flows. Browser rendering QA was unavailable in the build session because no `cua_repl.js` tool was offered.
+Unit tests cover the simulation, symbolic transformations, error handling, Git object storage, branches, and export. A DOM interaction smoke test covers the primary editing and versioning flows. The deployed app was also verified in Chromium for startup, simulation, parameter changes, live distribution plots, and the expanded results panel. The screenshots above were captured at a 1600 × 1000 viewport with 2× pixel density.
