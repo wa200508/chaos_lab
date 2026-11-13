@@ -1,0 +1,22 @@
+{
+  "name": "chaos-lab",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/app.js --bundle --minify --outfile=dist/app.js --format=esm",
+    "check": "node --check src/app.js && node --test --test-force-exit tests/engine.test.js tests/repository.test.js && node tests/ui-smoke.mjs"
+  },
+  "dependencies": {
+    "@isomorphic-git/lightning-fs": "^4.6.2",
+    "buffer": "^6.0.3",
+    "isomorphic-git": "^1.37.4",
+    "lucide": "^0.468.0",
+    "nerdamer": "^1.1.13"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "fake-indexeddb": "^6.2.8",
+    "happy-dom": "^21.0.4"
+  }
+}
