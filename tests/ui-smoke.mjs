@@ -4,6 +4,8 @@ import {readFile} from 'node:fs/promises';
 import assert from 'node:assert/strict';
 const win=new Window({url:'https://chaos-test.local',settings:{enableJavaScriptEvaluation:true,disableCSSFileLoading:true,disableJavaScriptFileLoading:true,suppressInsecureJavaScriptEnvironmentWarning:true}});
 Object.defineProperty(win,'indexedDB',{value:indexed.indexedDB});Object.defineProperty(win,'IDBKeyRange',{value:indexed.IDBKeyRange});
+// A browser does not provide Node's Buffer global. Do not inherit it from the test host.
+win.Buffer=undefined;
 win.document.write(await readFile('dist/index.html','utf8'));win.eval(await readFile('dist/app.js','utf8'));
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const waitFor=async fn=>{for(let i=0;i<120;i++){if(fn())return;await delay(20);}throw new Error('Timed out waiting for UI state');};

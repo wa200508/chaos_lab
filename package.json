@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "esbuild src/app.js --bundle --minify --outfile=dist/app.js --format=esm",
+    "build": "esbuild src/app.js --bundle --minify --inject:src/browser-globals.js --outfile=dist/app.js --format=esm",
     "check": "node --check src/app.js && node --test --test-force-exit tests/engine.test.js tests/repository.test.js && node tests/ui-smoke.mjs"
   },
   "dependencies": {
