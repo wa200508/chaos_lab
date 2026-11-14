@@ -13,15 +13,17 @@ try{
  const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
  // The local distribution works without external network services or fonts.
  await context.route('**/*',route=>new URL(route.request().url()).origin===url?route.continue():route.abort());
- await page.goto(url);await page.waitForFunction(()=>window.chaosLab);
+ await page.goto(url);await page.waitForFunction(()=>window.chaosLab);await page.evaluate(()=>document.fonts.ready);
  assert.equal(await page.evaluate(()=>window.chaosLab.getState().sim.engine),'symbolic-distributions/v2');
  assert.equal(await page.locator('.tap-node .histogram rect').count(),68);
  assert.equal(await page.locator('[data-action="select"]').textContent(),'');
- const original=await page.evaluate(()=>{const s=window.chaosLab.getState();return s.renderer.render(s.sim.laws.logistic).histogram.counts;});
+ async function histogramCounts(){const data=await page.evaluate(()=>{const s=window.chaosLab.getState();return {rendered:s.renderer.render(s.sim.laws.logistic),errors:s.sim.errors,model:s.tabs[s.active].model};});assert.equal(data.rendered.status,'ready',JSON.stringify(data));return data.rendered.histogram.counts;}
+ const original=await histogramCounts();
  await page.locator('[data-action="settings"]').click();await page.locator('#settings-seed').fill('999');await page.locator('[data-action="settingssubmit"]').click();
- const reseeded=await page.evaluate(()=>{const s=window.chaosLab.getState();return s.renderer.render(s.sim.laws.logistic).histogram.counts;});assert.deepEqual(reseeded,original);
+ await page.waitForFunction(()=>window.chaosLab.getState().tabs[window.chaosLab.getState().active].model.seed===999);
+ const reseeded=await histogramCounts();assert.deepEqual(reseeded,original);
  await page.locator('[data-param="r"]').fill('3.2');await page.locator('[data-param="r"]').press('Tab');
- const changed=await page.evaluate(()=>{const s=window.chaosLab.getState();return s.renderer.render(s.sim.laws.logistic).histogram.counts;});assert.notDeepEqual(changed,original);
+ const changed=await histogramCounts();assert.notDeepEqual(changed,original);
  await page.locator('[data-action="analytics"]').first().click();assert.ok(await page.locator('.distribution-method').innerText().then(s=>s.includes('numerical')));
  await page.locator('[data-action="split"]').first().click();assert.equal(await page.locator('.split-container').count(),1);await page.locator('[data-action="split"]').first().click();
  await page.locator('[data-action="export"]').click();
