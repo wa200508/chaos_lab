@@ -2,6 +2,7 @@
 node_modules
 releases
 .release-work
+.export-test
 docs
 .openai
 *.tar.gz

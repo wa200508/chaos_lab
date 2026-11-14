@@ -3,5 +3,6 @@
 *.cjs text eol=lf
 *.mjs text eol=lf
 dist/app.js -whitespace linguist-generated=true
+dist/fonts/*-OFL.txt -whitespace
 *.png binary
 *.ttf binary
