@@ -1,5 +1,5 @@
 import {readFile,writeFile,mkdir,readdir,copyFile,chmod,rm,stat,cp} from 'node:fs/promises';
-import {resolve,join,basename} from 'node:path';
+import {resolve,join,basename,dirname} from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {inject} from 'postject';
@@ -28,7 +28,17 @@ if(platform==='windows'){
  await writeFile(executable,pe);
 }
 await inject(executable,'NODE_SEA_BLOB',await readFile(blob),{sentinelFuse:'NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2'});
-const nodeLicense=spawnSync(process.execPath,['--license'],{encoding:'utf8',maxBuffer:10*1024*1024});if(nodeLicense.status!==0)throw Error('Could not collect bundled Node runtime license');await writeFile(join(stage,'NODE-LICENSE.txt'),nodeLicense.stdout);
+let nodeLicense;
+for(const file of [join(dirname(process.execPath),'LICENSE'),resolve(dirname(process.execPath),'../LICENSE'),'/usr/share/doc/nodejs/copyright']){
+ try{const text=await readFile(file,'utf8');if(text.includes('Node.js')&&text.includes('Permission is hereby granted')){nodeLicense=text;break;}}catch{}
+}
+if(!nodeLicense){
+ const response=await fetch(`https://raw.githubusercontent.com/nodejs/node/v${process.versions.node}/LICENSE`,{signal:AbortSignal.timeout(30000)});
+ if(!response.ok)throw Error(`Cannot retrieve the Node ${process.versions.node} license: HTTP ${response.status}`);
+ nodeLicense=await response.text();
+ if(!nodeLicense.includes('Node.js')||!nodeLicense.includes('Permission is hereby granted'))throw Error('Unexpected Node runtime license response.');
+}
+await writeFile(join(stage,'NODE-LICENSE.txt'),nodeLicense);
 await copyFile('LICENSE',join(stage,'LICENSE'));await cp('export-environments',join(stage,'export-environments'),{recursive:true});
 await writeFile(join(stage,'START-HERE.txt'),`Chaos Lab ${version}\n\nRun ${platform==='windows'?'chaos-lab.exe':'./chaos-lab'} to open http://127.0.0.1:4173.\nNo Node installation is required. Keep the process running while using the app.\nUse --no-open to suppress browser launch, --port NUMBER to choose a port.\nModels and Git history live in your browser profile, scoped to host and port.\nExport the Git repository before clearing browser data or switching origins.\nSee https://github.com/wa200508/chaos_lab for documentation and script-export dependencies.\n`);
 let archive;
