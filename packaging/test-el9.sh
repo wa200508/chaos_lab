@@ -1,6 +1,7 @@
 #!/bin/bash
 set -eu
-dnf -y install libstdc++ curl
+dnf -y install libstdc++
+if ! command -v curl >/dev/null; then dnf -y install curl-minimal; fi
 rpm -ivh /packages/*el9*.rpm
 chaos-lab --host 0.0.0.0 --port 4173 --no-open >/tmp/chaos-lab.log 2>&1 &
 app_pid=$!
