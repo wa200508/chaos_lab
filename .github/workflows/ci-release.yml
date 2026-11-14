@@ -1,0 +1,157 @@
+name: Verify and release
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+jobs:
+  verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm ci
+      - run: npm run build
+      - run: npm run check
+      - run: npx playwright-core install --with-deps chromium
+      - run: npm run test:browser
+      - run: python -m pip install -r export-environments/python/requirements.txt
+      - run: npm run test:exports
+        env:
+          MPLBACKEND: Agg
+
+  julia-export:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: '1.11'
+      - uses: julia-actions/cache@v2
+      - run: npm ci
+      - run: node scripts/export-fixtures.mjs .export-test
+      - run: julia --project=export-environments/julia -e 'using Pkg; Pkg.instantiate()'
+      - run: julia --project=export-environments/julia tests/export-julia.jl .export-test
+      - run: julia --project=export-environments/julia .export-test/logistic.jl --output .export-test/julia-visualization.png
+        env:
+          GKSwstype: '100'
+
+  native-packages:
+    needs: [verify, julia-export]
+    if: github.event_name != 'pull_request'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Validate release tag
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: test "${GITHUB_REF_NAME}" = "v$(node -p 'require("./package.json").version')"
+      - run: npm ci
+      - run: npm run build
+      - name: Install Linux package tools
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y rpm
+      - name: Build Linux portable, Ubuntu, and EL9 packages
+        if: runner.os == 'Linux'
+        run: npm run package -- --linux-packages
+      - name: Build Windows portable package
+        if: runner.os == 'Windows'
+        run: npm run package
+      - run: npm run test:binary
+      - name: Install and smoke-test Ubuntu package
+        if: runner.os == 'Linux'
+        run: |
+          sudo dpkg -i releases/*ubuntu*.deb
+          CHAOS_LAB_BINARY=/usr/bin/chaos-lab node --test tests/server.test.js
+      - name: Install and smoke-test EL9 package
+        if: runner.os == 'Linux'
+        run: docker run --rm -v "$PWD/releases:/packages:ro" -v "$PWD/packaging/test-el9.sh:/test-el9.sh:ro" rockylinux:9 bash /test-el9.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ runner.os }}
+          path: releases/*
+          if-no-files-found: error
+          retention-days: 7
+
+  docker-image:
+    needs: [verify, julia-export]
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build, test, and export Docker image
+        shell: bash
+        run: |
+          version=$(node -p 'require("./package.json").version')
+          docker build --platform linux/amd64 -t "chaos-lab:$version" .
+          docker run -d --name chaos-release-test -p 127.0.0.1:4173:4173 "chaos-lab:$version"
+          for attempt in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:4173/healthz > /tmp/health.json; then break; fi
+            sleep 1
+          done
+          python3 -c 'import json; d=json.load(open("/tmp/health.json")); assert d["status"]=="ok" and d["engine"]=="symbolic-distributions/v2"'
+          docker stop chaos-release-test
+          mkdir -p releases
+          docker save "chaos-lab:$version" | gzip > "releases/chaos-lab-$version-docker-amd64.tar.gz"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: docker-image
+          path: releases/*
+          retention-days: 7
+
+  publish:
+    needs: [native-packages, docker-image]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/download-artifact@v4
+        with:
+          path: releases
+          merge-multiple: true
+      - run: node scripts/release-checksums.mjs releases
+      - name: Publish release assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          flags=()
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then flags+=(--prerelease); fi
+          gh release create "$GITHUB_REF_NAME" releases/* --title "Chaos Lab $GITHUB_REF_NAME" --notes-file docs/release-notes.md "${flags[@]}"

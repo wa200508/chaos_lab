@@ -1,0 +1,7 @@
+* text=auto
+*.sh text eol=lf
+*.cjs text eol=lf
+*.mjs text eol=lf
+dist/app.js -whitespace linguist-generated=true
+*.png binary
+*.ttf binary

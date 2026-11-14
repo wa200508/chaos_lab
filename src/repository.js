@@ -1,14 +1,17 @@
 import git from 'isomorphic-git';
 import LightningFS from '@isomorphic-git/lightning-fs';
-import {clone,defaultModel,toSysML} from './engine.js';
+import {clone,defaultModel,toSysML,compileModel,exportSymbolicGraph,ENGINE_VERSION} from './engine.js';
 const fs=new LightningFS('chaos-lab-git-v2'),pfs=fs.promises,dir='/models',author={name:'You',email:'explorer@chaos.local'};
 const safeName=n=>n.replace(/[^a-zA-Z0-9_-]/g,'_');
 export async function branches(){return git.listBranches({fs,dir});}
 export async function commitModel(model,branch=model.branch||'main',message=model.name){
  await git.writeRef({fs,dir,ref:'HEAD',value:'refs/heads/'+branch,force:true,symbolic:true});
- await pfs.writeFile(dir+'/model.json',JSON.stringify(model,null,2),'utf8');await pfs.writeFile(dir+'/model.sysml',toSysML(model),'utf8');
+ const stored={...model,engine:ENGINE_VERSION};
+ await pfs.writeFile(dir+'/model.json',JSON.stringify(stored,null,2),'utf8');
+ await pfs.writeFile(dir+'/model.symbolic.json',JSON.stringify(exportSymbolicGraph(compileModel(stored)),null,2),'utf8');
+ await git.add({fs,dir,filepath:'model.symbolic.json'});await pfs.writeFile(dir+'/model.sysml',toSysML(model),'utf8');
  await git.add({fs,dir,filepath:'model.json'});await git.add({fs,dir,filepath:'model.sysml'});
- return git.commit({fs,dir,ref:'refs/heads/'+branch,author,message:message+`\n\nModel: ${model.name}\nBlocks: ${model.nodes.length}\nSamples: ${model.samples}\nSeed: ${model.seed}\nFormat: SysML 2.0 + graph JSON`});
+ return git.commit({fs,dir,ref:'refs/heads/'+branch,author,message:message+`\n\nModel: ${model.name}\nBlocks: ${model.nodes.length}\nEngine: ${ENGINE_VERSION}\nVisualization draws: ${model.samples}\nVisualization seed: ${model.seed}\nFormat: SysML 2.0 + graph JSON`});
 }
 export async function initRepository(){
  try{await pfs.stat(dir+'/.git');}catch{

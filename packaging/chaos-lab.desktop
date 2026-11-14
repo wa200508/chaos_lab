@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Chaos Lab
+Comment=Explore symbolic probability systems visually
+Exec=chaos-lab --open
+Icon=chaos-lab
+Terminal=false
+Categories=Education;Science;Math;

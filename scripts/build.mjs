@@ -1,0 +1,11 @@
+import {build} from 'esbuild';
+import {readFile,writeFile} from 'node:fs/promises';
+import {createHash} from 'node:crypto';
+const pkg=JSON.parse(await readFile(new URL('../package.json',import.meta.url),'utf8'));
+await build({entryPoints:['src/app.js'],bundle:true,minify:true,inject:['src/browser-globals.js'],outfile:'dist/app.js',format:'esm'});
+const hash=async path=>createHash('sha256').update(await readFile(path)).digest('hex').slice(0,12);
+let html=await readFile('dist/index.html','utf8');
+html=html.replace(/src="app\.js(?:\?[^"]*)?"/,'src="app.js?v='+await hash('dist/app.js')+'"').replace(/href="styles\.css(?:\?[^"]*)?"/,'href="styles.css?v='+await hash('dist/styles.css')+'"');
+await writeFile('dist/index.html',html);
+await writeFile('dist/version.json',JSON.stringify({version:pkg.version,engine:'symbolic-distributions/v2'})+'\n');
+console.log('Built Chaos Lab '+pkg.version);
