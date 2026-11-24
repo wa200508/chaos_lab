@@ -20,7 +20,7 @@ export function hydrogenGroundState() {
       block('radius', 'gamma', 'Electron radius (a₀)', 15, 30, {shape: 3, lambda: 2}),
       block('inside', 'less', 'Inside probe sphere?', 315, 30),
       tap('insideTap', 'Inside = 1, outside = 0', 'inside', 550, 30),
-      tap('radialTap', 'Radial probability (a₀)', 'radius', 15, 235),
+      {...tap('radialTap', 'Radial probability (a₀)', 'radius', 15, 235), orbitalCloud: true},
       block('probe', 'constant', 'Probe radius (a₀)', 315, 235, {value: 1}),
       block('psi', 'custom', '1s amplitude (a₀⁻³ᐟ²)', 550, 235, {expression: 'exp(-x)/sqrt(pi)'})
     ],

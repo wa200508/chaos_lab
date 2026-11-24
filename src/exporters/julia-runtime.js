@@ -1,4 +1,4 @@
-export default String.raw`using Symbolics, Distributions, QuadGK
+export default String.raw`using Symbolics, Distributions, QuadGK, Random
 
 const TERMS = Dict(String(t["id"]) => t for t in PAYLOAD["graph"]["terms"])
 const SOURCES = Dict(String(t["sourceId"]) => t for t in values(TERMS) if t["kind"] == "source")
@@ -214,6 +214,40 @@ if !("--no-plot" in ARGS)
     import Plots
 end
 
+function orbital_rate(tap)
+    term = TERMS[tap["root"]]
+    if get(tap,"orbitalCloud",false) && get(term,"family","")=="gamma" && parse_math(term["parameters"]["shape"])==3
+        return Float64(parse_math(term["parameters"]["lambda"]))
+    end
+    return nothing
+end
+
+function orbital_panels(rate, seed, count)
+    rng = MersenneTwister(seed)
+    radial = Gamma(3,1/rate)
+    n = 160
+    centers = ((1:n) .- 0.5) .* (8/n) .- 4
+    image = zeros(n,n)
+    for i in 1:count
+        radius = quantile(radial,rand(rng))
+        transverse = radius*sqrt(1-(2rand(rng)-1)^2)
+        angle = 2π*rand(rng)
+        col = floor(Int,(transverse*cos(angle)+4)*n/8)+1
+        row = floor(Int,(transverse*sin(angle)+4)*n/8)+1
+        for y in max(1,row-2):min(n,row+2), x in max(1,col-2):min(n,col+2)
+            image[y,x] += exp(-((row-y)^2+(col-x)^2)/1.28)
+        end
+    end
+    density = [exp(-rate*hypot(x,y)) for y in centers, x in centers]
+    colors = Plots.cgrad(["#060a17","#141638","#33266d","#6043ac","#5a90d3","#82dbe7","#edfaea"])
+    return map(((image,"Projected detections"),(density,"Spatial density · z = 0"))) do (field,title)
+        panel = Plots.heatmap(centers,centers,sqrt.(field);color=colors,colorbar=false,
+                             title=title,aspect_ratio=:equal,xlabel="x (a₀)",ylabel="y (a₀)")
+        Plots.scatter!(panel,[0],[0];markersize=2,markercolor="#efdfb0",label=false)
+        panel
+    end
+end
+
 function plot_visualizations(output=nothing;bins=34,cdf_points=128)
     output!==nothing&&(ENV["GKSwstype"]="100")
     taps=[tap for tap in PAYLOAD["visualizations"] if get(tap,"root",nothing)!==nothing]
@@ -230,7 +264,14 @@ function plot_visualizations(output=nothing;bins=34,cdf_points=128)
         values=range(lo,hi;length=cdf_points)
         push!(panels,Plots.plot(values,d.cdf.(values);color="#327c60",legend=false,title="CDF · "*d.method,xlabel="Port value",ylabel="P(Y ≤ y)",ylims=(-.02,1.02)))
     end
-    figure=Plots.plot(panels...;layout=(length(taps),2),size=(1200,330*length(taps)))
+    for tap in taps
+        rate = orbital_rate(tap)
+        if rate !== nothing
+            append!(panels,orbital_panels(rate,mod(get(PAYLOAD["model"],"seed",42),2^32),get(PAYLOAD["model"],"samples",10000)))
+        end
+    end
+    rows = length(panels) ÷ 2
+    figure=Plots.plot(panels...;layout=(rows,2),size=(1200,330*rows))
     output===nothing ? display(figure) : Plots.savefig(figure,output)
 end
 

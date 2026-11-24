@@ -45,3 +45,19 @@ test('hydrogen 1s amplitude and sphere probabilities agree at three probe radii'
     close(renderer.render(analysis.laws.psi).stats.mean, Math.exp(-r)/Math.sqrt(Math.PI));
   }
 });
+
+test('orbital detections preserve the radial CDF and have isotropic directions', async () => {
+  const {positions,cloudRate} = await import('../src/orbital-cloud.js');
+  const law = compileModel(hydrogenGroundState()).laws.radialTap;
+  const rendered = createDistributionRenderer().render(law);
+  assert.equal(cloudRate(law,rendered),2);
+  const cloud = positions(rendered,30000,17);
+  let inside=0;
+  const squares=[0,0,0];
+  for(const xyz of cloud){
+    if(Math.hypot(...xyz)<1) inside++;
+    xyz.forEach((v,i)=>squares[i]+=v*v);
+  }
+  close(inside/cloud.length,1-5*Math.exp(-2),.012);
+  for(const sum of squares) close(sum/cloud.length,1,.06);
+});

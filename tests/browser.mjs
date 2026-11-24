@@ -65,6 +65,29 @@ try{
  assert.deepEqual(errors,[]);
 
  if(process.env.CHAOS_CAPTURE_DIR){await mkdir(process.env.CHAOS_CAPTURE_DIR,{recursive:true});await page.screenshot({path:process.env.CHAOS_CAPTURE_DIR+'/symbolic-workspace.png'});}
- console.log('Chromium passed: offline startup, symbolic laws, CDF histograms, seed isolation, parameter changes, final-law visualization, split view, Python/Julia downloads, Git commit, twelve named custom inputs, manual add/remove/rename, drag wiring, endpoint reconnection, and wire rerouting.');
+ await page.locator('[data-action="new"]').first().click();
+ await page.locator('#new-template').selectOption('hydrogen');
+ await page.locator('[data-action="newsubmit"]').click();
+ await page.locator('.orbital-preview').click();
+ const plot=page.locator('.orbital-stage canvas');
+ const snapshot=()=>plot.evaluate(c=>c.toDataURL());
+ const cloudImage=await snapshot();
+ if(process.env.CHAOS_CAPTURE_DIR) await page.locator('.orbital-dialog').screenshot({path:process.env.CHAOS_CAPTURE_DIR+'/orbital-cloud.png'});
+ await page.locator('#orbital-view').selectOption('slice');
+ assert.notEqual(await snapshot(),cloudImage);
+ const slice=await snapshot();
+ await page.locator('#orbital-width').selectOption('2');
+ assert.notEqual(await snapshot(),slice);
+ const download=page.waitForEvent('download');
+ await page.locator('[data-action="saveorbital"]').click();
+ assert.equal((await download).suggestedFilename(),'orbital-slice.png');
+ await page.locator('[data-action="closemodal"]').click();
+ await page.locator('[data-node="radialTap"] .node-title').click();
+ await page.locator('#enable-orbital').uncheck();
+ assert.equal(await page.locator('.orbital-preview').count(),0);
+ await page.locator('#enable-orbital').check();
+ assert.equal(await page.locator('.orbital-preview').count(),1);
+ assert.deepEqual(errors,[]);
+ console.log('Chromium passed: orbital cloud, slice, scale, PNG download,  offline startup, symbolic laws, CDF histograms, seed isolation, parameter changes, final-law visualization, split view, Python/Julia downloads, Git commit, twelve named custom inputs, manual add/remove/rename, drag wiring, endpoint reconnection, and wire rerouting.');
  await context.close();
 }finally{if(browser)await browser.close();server.kill();}

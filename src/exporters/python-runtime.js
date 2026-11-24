@@ -221,13 +221,44 @@ def numeric_descriptor(root):
     return cdf,(min(values),max(values)),'numerical joint-CDF quadrature; finite plotting window'
 
 
+def orbital_rate(tap):
+    term = TERMS[tap['root']]
+    if tap.get('orbitalCloud') and term.get('family') == 'gamma' and parse_math(term['parameters']['shape']) == 3:
+        return float(parse_math(term['parameters']['lambda']))
+
+
+def plot_orbital(axes, rate, seed, count):
+    import numpy as np
+    from scipy.ndimage import gaussian_filter
+    from scipy.special import gammaincinv
+    from matplotlib.colors import LinearSegmentedColormap, PowerNorm
+
+    rng = np.random.default_rng(int(seed) % 2**32)
+    radius = gammaincinv(3, rng.random(count))/rate
+    cosine = rng.uniform(-1, 1, count)
+    phi = rng.uniform(0, 2*np.pi, count)
+    transverse = radius*np.sqrt(1-cosine**2)
+    counts, _, _ = np.histogram2d(transverse*np.cos(phi), transverse*np.sin(phi),
+                                  bins=192, range=[[-4,4],[-4,4]])
+    centers = (np.arange(192)+0.5)*8/192-4
+    density = np.exp(-rate*np.hypot(centers[:,None], centers[None,:]))
+    palette = LinearSegmentedColormap.from_list('orbital', ['#060a17','#141638','#33266d','#6043ac','#5a90d3','#82dbe7','#edfaea'])
+    for ax, field, title in zip(axes, [gaussian_filter(counts.T, .8), density],
+                                ['Projected detections', 'Spatial density · z = 0']):
+        ax.imshow(field, origin='lower', extent=(-4,4,-4,4), cmap=palette, norm=PowerNorm(.5))
+        ax.plot(0,0,'o',ms=3,mfc='none',mec='#efdfb0')
+        ax.set(title=title, xlabel='x (a₀)', ylabel='y (a₀)', aspect='equal')
+
+
 def plot_visualizations(output=None,bins=34,cdf_points=128):
     import numpy as np
     import matplotlib.pyplot as plt
     from scipy.optimize import brentq
     taps=[tap for tap in PAYLOAD['visualizations'] if tap.get('root')]
     if not taps: print('No attached visualization nodes.');return
-    fig,axes=plt.subplots(len(taps),2,figsize=(12,3.3*len(taps)),squeeze=False)
+    cloud_rates = [rate for tap in taps if (rate := orbital_rate(tap)) is not None]
+    rows = len(taps) + len(cloud_rates)
+    fig,axes=plt.subplots(rows,2,figsize=(12,3.3*rows),squeeze=False)
     for row,tap in enumerate(taps):
         cdf,bounds,method=numeric_descriptor(tap['root']);lo,hi=bounds
         if not math.isfinite(lo):
@@ -243,6 +274,8 @@ def plot_visualizations(output=None,bins=34,cdf_points=128):
         axes[row,0].bar(edges[:-1],probabilities,width=np.diff(edges),align='edge',color='#83a77e');axes[row,0].set_ylabel('Probability per bin');axes[row,0].set_title(tap['name']+' — final distribution')
         points=np.linspace(lo,hi,cdf_points);axes[row,1].plot(points,[cdf(x) for x in points],color='#327c60');axes[row,1].set_ylim(-.02,1.02);axes[row,1].set_title('CDF · '+method);axes[row,1].set_ylabel('P(Y ≤ y)')
         for axis in axes[row]:axis.grid(alpha=.15);axis.set_xlabel('Port value')
+    for row,rate in enumerate(cloud_rates, start=len(taps)):
+        plot_orbital(axes[row],rate,PAYLOAD['model'].get('seed',42),PAYLOAD['model'].get('samples',10000))
     fig.suptitle(PAYLOAD['model']['name']+' · symbolic laws, numerical visualization',fontsize=12);fig.tight_layout()
     if output:fig.savefig(output,dpi=160);plt.close(fig);print('Saved '+str(output))
     else:plt.show()

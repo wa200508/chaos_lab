@@ -1,3 +1,4 @@
+import {cloudRate, positions, drawOrbital} from './orbital-cloud.js';
 import {hydrogenGroundState} from './hydrogen.js';
 import {createIcons,icons} from 'lucide';
 import {CATALOG,clone,defaultModel,makeNode,compileModel,symbolic,toSysML} from './engine.js';
@@ -51,8 +52,60 @@ function wirePath(a,b,e){const p=outPoint(a),q=inPoint(b,e.port);if(e.bend){cons
 function graphHTML(m,compare=false){let wires=m.edges.map((e,index)=>{const a=m.nodes.find(n=>n.id===e.from),b=m.nodes.find(n=>n.id===e.to);if(!a||!b)return '';const path=wirePath(a,b,e),p=outPoint(a),q=inPoint(b,e.port),selected=!compare&&state.selectedEdge===index;return `<path class="wire ${e.port==='feedback'?'feedback':''} ${selected?'selected-wire':''}" d="${path}"/>${compare?'':`<path class="wire-hit" data-wire="${index}" d="${path}"><title>${esc(a.name)} output → ${esc(b.name)}.${esc(e.port)}. Drag the line to reroute; select it to drag either endpoint.</title></path>`}${selected?`<circle class="wire-handle" data-wire-end="from" data-edge="${index}" cx="${p.x}" cy="${p.y}" r="6"/><circle class="wire-handle" data-wire-end="to" data-edge="${index}" cx="${q.x}" cy="${q.y}" r="6"/>`:''}`;}).join('');
  for(const n of m.nodes.filter(n=>n.type==='tap'&&n.source)){const source=m.nodes.find(s=>s.id===n.source.id);if(!source)continue;const p=n.source.port==='in'?inPoint(source,n.source.inputPort||'x'):outPoint(source),q={x:n.x+nodeWidth(n)/2,y:n.y};wires+=`<path class="wire tap-wire" d="M ${p.x} ${p.y} L ${p.x+15} ${p.y} Q ${p.x+25} ${p.y} ${p.x+25} ${p.y+12} L ${p.x+25} ${q.y-28} Q ${p.x+25} ${q.y-17} ${p.x+12} ${q.y-17} L ${q.x+12} ${q.y-17} Q ${q.x} ${q.y-17} ${q.x} ${q.y}"/><circle class="wire-dot" cx="${p.x}" cy="${p.y}" r="2.4"/>`;}
  return `<svg class="wires" aria-label="Model connections">${wires}<path id="connection-ghost" class="connection-ghost" d=""/></svg>`+m.nodes.map(n=>nodeHTML(n,compare)).join('');}
+const cloudCache = new WeakMap();
+function cloudData(law, rendered, m) {
+  const rate = cloudRate(law, rendered);
+  if (!rate) return null;
+  if (!cloudCache.has(rendered)) {
+    const points = positions(rendered, m.samples, m.seed);
+    const data = {rate, points, extent:4, view:'cloud'};
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 192;
+    drawOrbital(canvas, data);
+    data.preview = canvas.toDataURL();
+    cloudCache.set(rendered, data);
+  }
+  return cloudCache.get(rendered);
+}
+
+function orbitalPreview(node, rendered, m, compare) {
+  if (!node.orbitalCloud) return '';
+  const analysis = compare ? state.compareSim : state.sim;
+  const data = cloudData(analysis.laws[node.id], rendered, m);
+  if (!data) return '<small>Cloud requires a Gamma radius with shape 3.</small>';
+  return `<button class="orbital-preview" data-action="openorbital" data-tap="${esc(node.id)}" ${compare?'disabled':''}>
+    <img src="${data.preview}" alt="Projected position measurements around the nucleus">
+    <span>Orbital cloud ↗</span></button>`;
+}
+
+function openOrbital(element) {
+  const id = element.dataset.tap;
+  const data = cloudData(state.sim.laws[id], visualizeNode(id), model());
+  if (!data) return;
+  const body = `<div class="orbital-stage"><canvas width="520" height="520" aria-label="Electron position cloud around the nucleus"></canvas>
+    <aside class="orbital-controls"><label>Spatial view<select id="orbital-view"><option value="cloud">Projected detections</option><option value="slice">Central density slice</option></select></label>
+    <label>Field width<select id="orbital-width"><option value="2">4 a₀</option><option value="4" selected>8 a₀</option><option value="8">16 a₀</option></select></label>
+    <div class="orbital-key"><i></i> Nucleus</div><div class="orbital-ramp"></div><small>Low to high · square-root brightness</small>
+    <p id="orbital-caption"></p></aside></div>`;
+  modal('Orbital cloud', body, button('saveorbital','Save PNG','download','btn outline'), true);
+  const dialog = $('.orbital-stage').closest('.modal');
+  dialog.classList.add('orbital-dialog');
+  function repaint() {
+    const view = $('#orbital-view').value;
+    const canvas = $('.orbital-stage canvas');
+    canvas.setAttribute('aria-label', view==='slice'?'Central slice of spatial probability density':'Projected electron detections');
+    drawOrbital(canvas,{...data,view,extent:Number($('#orbital-width').value)});
+    $('#orbital-caption').textContent = view==='slice'
+      ? 'Relative spatial density in the z = 0 plane. Its peak at the nucleus is 1.'
+      : data.points.length.toLocaleString()+' positions from the final radial law, with isotropic directions, projected onto the x–y plane. Brightness shows local detection concentration.';
+  }
+  $('#orbital-view').onchange = repaint;
+  $('#orbital-width').onchange = repaint;
+  repaint();
+}
+
 function nodeHTML(n,compare=false){const selected=!compare&&state.selection.has(n.id),m=compare?state.tabs[state.compare]?.model:model(),ports=safeInputPorts(n);let body='';
- if(n.type==='tap'){const v=visualizeNode(n.id,compare),s=v?.stats||noStats;return `<article class="node tap-node ${nodeWidth(n)===280?'output':''} ${selected?'selected':''}" data-node="${n.id}" ${compare?'data-compare-node="true"':''} style="left:${n.x}px;top:${n.y}px"><span class="tap-tag">${n.source?.port==='in'?'INPUT':'OUTPUT'} TAP · ${esc(m.nodes.find(s=>s.id===n.source?.id)?.name||'Unattached')}</span><div class="node-header">${icon('chart-no-axes-column-increasing')}<span class="node-title">${esc(n.name)}</span><span style="font-size:8px;color:#9cae9e">numerical CDF</span></div><div class="node-body">${histogramSVG(v)}<div class="tap-stats"><span>μ ≈<b>${fmt(s.mean)}</b></span><span>σ ≈<b>${fmt(s.sd)}</b></span><span>bins<b>34</b></span></div></div><button class="port" data-port="tap" data-id="${n.id}" aria-label="Observation input: connect a distribution output" title="Observation input: connect a distribution output to visualize its law"></button></article>`;}
+ if(n.type==='tap'){const v=visualizeNode(n.id,compare),s=v?.stats||noStats;return `<article class="node tap-node ${nodeWidth(n)===280?'output':''} ${selected?'selected':''}" data-node="${n.id}" ${compare?'data-compare-node="true"':''} style="left:${n.x}px;top:${n.y}px"><span class="tap-tag">${n.source?.port==='in'?'INPUT':'OUTPUT'} TAP · ${esc(m.nodes.find(s=>s.id===n.source?.id)?.name||'Unattached')}</span><div class="node-header">${icon('chart-no-axes-column-increasing')}<span class="node-title">${esc(n.name)}</span><span style="font-size:8px;color:#9cae9e">numerical CDF</span></div><div class="node-body">${orbitalPreview(n,v,m,compare)}${histogramSVG(v)}<div class="tap-stats"><span>μ ≈<b>${fmt(s.mean)}</b></span><span>σ ≈<b>${fmt(s.sd)}</b></span><span>bins<b>34</b></span></div></div><button class="port" data-port="tap" data-id="${n.id}" aria-label="Observation input: connect a distribution output" title="Observation input: connect a distribution output to visualize its law"></button></article>`;}
  if(n.type==='random')body=`<div class="node-detail"><span>${n.op==='uniform'?'Range':n.op==='normal'?'Mean / σ':'Distribution'}</span><span class="mono">${n.op==='uniform'?`[${n.params.min}, ${n.params.max}]`:n.op==='normal'?`${n.params.mean} / ${n.params.sigma}`:n.op}</span></div><div class="node-detail"><span>Representation</span><span class="mono">symbolic law</span></div>`;
  else if(n.type==='parameter')body=`<div class="node-detail"><span>Value</span><span class="mono" style="font-size:13px">${n.params.value}</span></div>`;
  else if(n.type==='delay')body='<div class="formula" style="font-size:15px">z⁻¹</div><div class="node-detail"><span>One iteration back</span><span class="mono">xₙ</span></div>';
@@ -85,6 +138,9 @@ function inspectorHTML(){if(state.selectedEdge!==null&&model().edges[state.selec
  if(n.type==='delay')params=inputField('initial','Initial constant (when initial port is unconnected)',n.params.initial??'1/2','text')+'<p class="field-help">Stores the previous iteration. Route its output back to a function to create a feedback loop.</p>';
  if(n.type==='tap'){const observed=model().nodes.find(s=>s.id===n.source?.id);params=`<div class="field"><label class="field-label">Observe block</label><select class="field-input" id="tap-source"><option value="">Choose a block…</option>${model().nodes.filter(s=>s.type!=='tap').map(s=>`<option value="${s.id}" ${n.source?.id===s.id?'selected':''}>${esc(s.name)}</option>`).join('')}</select></div><div class="field"><label class="field-label">Observe port</label><select class="field-input" id="tap-port"><option value="out" ${n.source?.port==='out'?'selected':''}>Output · result</option>${observed?safeInputPorts(observed).map(p=>`<option value="in:${esc(p.name)}" ${n.source?.port==='in'&&(n.source.inputPort||'x')===p.name?'selected':''}>Input · ${esc(p.label)}</option>`).join(''):''}</select></div>`;}
 
+ if(n.type==='tap' && (cloudRate(law,visual)||n.orbitalCloud)) {
+   params += `<label class="field"><input id="enable-orbital" type="checkbox" ${n.orbitalCloud?'checked':''}> Show isotropic orbital cloud (radius in a₀)</label>`;
+ }
  const incoming=model().edges.filter(e=>e.to===n.id),outgoing=model().edges.filter(e=>e.from===n.id);
  return `<div class="inspector-heading">Block inspector${button('clearselect','Deselect block','panel-right-close')}</div><div class="inspector-section"><div class="selected-block"><div class="selected-block-icon">${n.symbol}</div><div><b>${esc(n.name)}</b><p>${{function:'Nonlinear function',random:'Random source',parameter:'Constant parameter',tap:'Distribution observer',calculus:'Symbolic operator',delay:'Discrete dynamics'}[n.type]||n.category+' operator'}</p></div></div></div><div class="inspector-section">${n.op==='custom'?customPortInspector(n):''}<h4>Parameters</h4>${params||'<p class="field-help">This block has no adjustable parameters.</p>'}</div><div class="inspector-section"><h4>Probability law</h4><code class="law-expression">${esc(law?.formula||'No resolved law')}</code><p class="field-help">${esc(visual?.method||visual?.error||'Symbolic distribution')}<br>${law?.sourceIds.length||0} independent source(s); shared wires retain identity.</p></div><div class="inspector-section"><h4>Connections <span style="float:right;font-size:8px">${incoming.length+outgoing.length}</span></h4>${incoming.map(e=>`<div class="connection-row"><span><span class="port-indicator"></span>${esc(e.port)}</span><span class="connection-value">${esc(model().nodes.find(s=>s.id===e.from)?.name)} <button data-disconnect="${e.from}|${e.to}|${e.port}" title="Disconnect wire" style="color:#b2beb3">×</button></span></div>`).join('')}${outgoing.length?`<div class="connection-row"><span><span class="port-indicator"></span>out</span><span class="connection-value">${outgoing.length} connection${outgoing.length>1?'s':''}</span></div>`:''}${!incoming.length&&!outgoing.length?'<p class="field-help">Connect ports to route a signal.</p>':''}${n.type!=='tap'?`<button class="tap-btn" data-action="tapselection">${icon('plus')}Add output distribution tap</button>`:''}</div><div class="inspector-section"><h4>Evaluated output statistics ≈ <span class="dot" style="float:right"></span></h4><div class="stat-grid"><div><small>MEAN · μ</small><span>${fmt(s.mean)}</span></div><div><small>STD. DEV · σ</small><span>${fmt(s.sd)}</span></div><div><small>DISPLAY MIN</small><span>${fmt(s.min)}</span></div><div><small>DISPLAY MAX</small><span>${fmt(s.max)}</span></div></div></div><div class="inspector-bottom"><div class="mode-badge">${icon('braces')}Symbolic engine · numerical visualization</div><div style="display:flex;gap:8px;margin-top:15px">${button('copy','Copy block','copy','btn soft')}${button('delete','Delete block','trash-2','icon-btn')}</div></div>`;}
 function simulationHTML(){
@@ -116,6 +172,8 @@ function paste(){if(!state.clipboard)return toast('Select a block and copy it fi
 function deleteSelected(){if(state.selectedEdge!==null){edit(m=>m.edges.splice(state.selectedEdge,1));state.selectedEdge=null;render();return;}if(!state.selection.size)return;edit(m=>{m.nodes=m.nodes.filter(n=>!state.selection.has(n.id));m.edges=m.edges.filter(e=>!state.selection.has(e.from)&&!state.selection.has(e.to));for(const n of m.nodes)if(n.source&&state.selection.has(n.source.id))n.source=null;state.selection.clear();state.selected=null;});}
 function download(data,name,type='text/plain'){const blob=data instanceof Blob?data:new Blob([data],{type});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);}
 const actions={
+ openorbital:openOrbital,
+ saveorbital(){const link=document.createElement('a');link.href=$('.orbital-stage canvas').toDataURL();link.download='orbital-'+$('#orbital-view').value+'.png';link.click();},
  workspace(){state.source=false;render();},library(){document.body.classList.remove('focus');$('#block-search')?.focus();toast('Drag a block onto the canvas, or double-click to add it.');},allblocks(){state.favorites=false;render();},favorites(){state.favorites=true;render();},
  rename(){modal('Name your model','<p>A model name becomes its commit message when you save.</p><div class="field"><label class="field-label" for="model-name">Model name</label><input class="field-input" id="model-name" maxlength="80" value="'+esc(model().name)+'"></div>',button('renamesubmit','Rename',null,'btn green'));},renamesubmit(){const name=$('#model-name').value.trim();if(!name)return;edit(m=>m.name=name);closeModal();},
  undo(){undo();},redo(){undo(true);},save,
@@ -166,7 +224,7 @@ document.addEventListener('keydown',e=>{
  if(mod&&e.key.toLowerCase()==='s'){e.preventDefault();save();return;}if(mod&&e.key.toLowerCase()==='z'){e.preventDefault();undo(e.shiftKey);return;}if(mod&&e.key.toLowerCase()==='y'){e.preventDefault();undo(true);return;}if(mod&&e.key.toLowerCase()==='c'){e.preventDefault();copyNodes();return;}if(mod&&e.key.toLowerCase()==='v'){e.preventDefault();paste();return;}if(mod&&e.key.toLowerCase()==='a'){e.preventDefault();state.selection=new Set(model().nodes.map(n=>n.id));render();return;}if(e.key==='Delete'||e.key==='Backspace'){e.preventDefault();deleteSelected();return;}if(e.key==='/'){e.preventDefault();$('#block-search')?.focus();return;}if(e.key.toLowerCase()==='t')actions.tap();if(e.key.toLowerCase()==='h')actions.pan();if(e.key.toLowerCase()==='v')actions.select();
 });
 function updateParam(key,value,renderNow=true){if(key==='initial'){try{scalar(value);}catch(error){toast(error.message);return;}}const n=model().nodes.find(n=>n.id===state.selected);if(!n)return;const current=n.params;if(!['expression','initial'].includes(key)&&!Number.isFinite(+value))return toast('Enter a finite number');if(['shape','sigma'].includes(key)&&+value<=0||key==='lambda'&&+value<=0||['a','b'].includes(key)&&n.op==='beta'&&(+value<=0))return toast('Enter a positive value.');if(key==='p'&&(value<0||value>1))return toast('Probability must be between 0 and 1');if(key==='min'&&+value>=current.max||key==='max'&&+value<=current.min)return toast('Maximum must be greater than minimum');edit(m=>{if(key==='r'){const e=m.edges.find(e=>e.to===n.id&&e.port==='r'),param=m.nodes.find(n=>n.id===e?.from);if(param?.type==='parameter')param.params.value=+value;else m.nodes.find(s=>s.id===n.id).params.r=+value;}else m.nodes.find(s=>s.id===n.id).params[key]=['expression','initial'].includes(key)?value:+value;if(key==='expression'&&n.op==='custom'&&n.portMode!=='manual'){try{const target=m.nodes.find(s=>s.id===n.id);target.inputPorts=customInputPorts(target);const names=target.inputPorts.map(p=>p.name);m.edges=m.edges.filter(e=>e.to!==n.id||names.includes(e.port));}catch{}}},renderNow);}
-document.addEventListener('change',e=>{const el=e.target;if(el.dataset.param)return updateParam(el.dataset.param,el.value);if(el.id==='branch-filter'){state.filter=el.value;render();}if(el.id==='compare-tab'){state.compare=+el.value;render();}if(el.id==='tap-source'||el.id==='tap-port'){const source=$('#tap-source').value,port=el.id==='tap-source'?'out':$('#tap-port').value;edit(m=>m.nodes.find(n=>n.id===state.selected).source=source?(port==='out'?{id:source,port:'out'}:{id:source,port:'in',inputPort:port.slice(3)}):null);}});
+document.addEventListener('change',e=>{const el=e.target;if(el.id==='enable-orbital'){edit(m=>m.nodes.find(n=>n.id===state.selected).orbitalCloud=el.checked);return;}if(el.dataset.param)return updateParam(el.dataset.param,el.value);if(el.id==='branch-filter'){state.filter=el.value;render();}if(el.id==='compare-tab'){state.compare=+el.value;render();}if(el.id==='tap-source'||el.id==='tap-port'){const source=$('#tap-source').value,port=el.id==='tap-source'?'out':$('#tap-port').value;edit(m=>m.nodes.find(n=>n.id===state.selected).source=source?(port==='out'?{id:source,port:'out'}:{id:source,port:'in',inputPort:port.slice(3)}):null);}});
 let rangeStart;
 document.addEventListener('pointerdown',e=>{if(e.target.dataset.range)rangeStart=clone(model());});
 document.addEventListener('input',e=>{if(e.target.dataset.range){const n=model().nodes.find(n=>n.id===state.selected);const edge=model().edges.find(e=>e.to===n.id&&e.port==='r'),param=model().nodes.find(n=>n.id===edge?.from);if(param?.type==='parameter')param.params.value=+e.target.value;else n.params.r=+e.target.value;active().dirty=true;clearTimeout(runTimer);runTimer=setTimeout(()=>{runSimulation();$('#plane').innerHTML=graphHTML(model());const number=$('[data-param="r"]');if(number)number.value=e.target.value;refreshIcons();persist();},45);}});
