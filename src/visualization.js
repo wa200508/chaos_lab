@@ -70,6 +70,16 @@ function sourceDescriptor(term) {
       const atoms = Array.from({ length: end + 1 }, (_, k) => ({ value: k, mass: Math.exp(k * Math.log(p.lambda) - p.lambda - logGamma(k + 1)) })).filter(a => a.mass > 1e-300);
       return { ...discreteDescriptor(atoms, 'Countable PMF · rendering tail truncated', Math.max(0, 1 - cdf(end))), moments: { mean: p.lambda, variance: p.lambda } };
     }
+    case 'gamma': {
+      const {shape, lambda: rate} = p;
+      if (!(shape > 0 && rate > 0)) throw Error('Gamma requires positive shape and rate.');
+      return {
+        cdf: y => y <= 0 ? 0 : 1 - gammaQ(shape, rate * y),
+        support: [0, Infinity], atoms: [],
+        moments: {mean: shape / rate, variance: shape / rate ** 2},
+        method: 'Gamma CDF · numerical incomplete gamma'
+      };
+    }
     case 'beta': if (!(p.a > 0 && p.b > 0)) throw Error('Beta requires positive shape parameters.'); return { cdf: y => betaCDF(y, p.a, p.b), support: [0, 1], atoms: [], moments: { mean: p.a / (p.a + p.b), variance: p.a * p.b / ((p.a + p.b) ** 2 * (p.a + p.b + 1)) }, method: 'Analytic beta CDF · numerical incomplete beta' };
     default: throw Error(`No renderer for ${term.family}.`);
   }

@@ -25,7 +25,7 @@ export function createLawFactory() {
     return intern(`constant:${exact}`, { kind: 'constant', value: exact, sourceIds: [], linear: { offset: exact, coefficients: {} }, cdf: { kind: 'dirac', at: exact } });
   }
   function source(id, family, params) {
-    const keys = { uniform: ['min', 'max'], normal: ['mean', 'sigma'], exponential: ['lambda'], bernoulli: ['p'], poisson: ['lambda'], beta: ['a', 'b'] }[family];
+    const keys = { uniform: ['min', 'max'], normal: ['mean', 'sigma'], exponential: ['lambda'], bernoulli: ['p'], poisson: ['lambda'], beta: ['a', 'b'], gamma: ['shape', 'lambda'] }[family];
     if (!keys) throw new Error(`Unknown probability distribution: ${family}`);
     const parameters = Object.fromEntries(keys.map(key => [key, scalar(params[key])]));
     return intern(`source:${id}`, { kind: 'source', sourceId: id, family, parameters, sourceIds: [id], linear: { offset: '0', coefficients: { [id]: '1' } }, cdf: { kind: 'source', family, parameters } });

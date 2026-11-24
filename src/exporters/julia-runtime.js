@@ -105,6 +105,7 @@ function source_distribution(name)
         family=="uniform" && return Uniform(p["min"],p["max"])
         family=="normal" && return Normal(p["mean"],p["sigma"])
         family=="exponential" && return Exponential(1/p["lambda"])
+        family=="gamma" && return Gamma(p["shape"],inv(p["lambda"]))
         family=="beta" && return Beta(p["a"],p["b"])
         family=="bernoulli" && return Bernoulli(p["p"])
         family=="poisson" && return Poisson(p["lambda"])
@@ -149,6 +150,10 @@ function numeric_descriptor(root)
         inputs=term["inputs"];op=term["operation"];unary=haskey(inputs,"x")&&all(k=="x"||TERMS[t]["kind"]=="constant" for (k,t) in inputs)
         if unary
             parent=numeric_descriptor(inputs["x"]);lo,hi=parent.bounds;p=Dict(k=>Float64(parse_math(TERMS[t]["value"])) for (k,t) in inputs if k!="x")
+            if op=="less" && get(TERMS[inputs["x"]],"family",nothing)=="gamma"
+                inside=parent.cdf(p["b"])
+                return (cdf=y->y<0 ? 0.0 : y<1 ? 1-inside : 1.0,bounds=(0.0,1.0),method="Gamma threshold probability")
+            end
             if op in ("add","subtract","multiply","divide")
                 b=p["b"];a=op=="multiply" ? b : op=="divide" ? 1/b : 1;shift=op=="add" ? b : op=="subtract" ? -b : 0
                 a==0&&return (cdf=y->Float64(y>=shift),bounds=(shift,shift),method="point mass")

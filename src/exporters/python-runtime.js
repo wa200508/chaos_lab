@@ -98,6 +98,10 @@ def symbolic_cdf(root, y=None, expand=False):
         if family=='uniform': expression=sp.Integral(expression/(p['max']-p['min']), (x,p['min'],p['max']))
         elif family=='normal': expression=sp.Integral(expression*sp.exp(-(x-p['mean'])**2/(2*p['sigma']**2))/(sp.sqrt(2*sp.pi)*p['sigma']), (x,-sp.oo,sp.oo))
         elif family=='exponential': expression=sp.Integral(expression*p['lambda']*sp.exp(-p['lambda']*x),(x,0,sp.oo))
+        elif family=='gamma':
+            k, rate = p['shape'], p['lambda']
+            density = rate**k * x**(k-1) * sp.exp(-rate*x) / sp.gamma(k)
+            expression = sp.Integral(expression*density, (x,0,sp.oo))
         elif family=='beta': expression=sp.Integral(expression*x**(p['a']-1)*(1-x)**(p['b']-1)/sp.beta(p['a'],p['b']),(x,0,1))
         elif family=='bernoulli': expression=sp.Sum(expression*p['p']**x*(1-p['p'])**(1-x),(x,0,1))
         elif family=='poisson': expression=sp.Sum(expression*sp.exp(-p['lambda'])*p['lambda']**x/sp.factorial(x),(x,0,sp.oo))
@@ -125,7 +129,7 @@ def numeric_function(root):
 def source_distribution(name):
     from scipy import stats
     s=SOURCES[name]; p={k:float(parse_math(v)) for k,v in s['parameters'].items()}
-    return {'uniform':lambda:stats.uniform(p['min'],p['max']-p['min']), 'normal':lambda:stats.norm(p['mean'],p['sigma']), 'exponential':lambda:stats.expon(scale=1/p['lambda']), 'beta':lambda:stats.beta(p['a'],p['b']), 'bernoulli':lambda:stats.bernoulli(p['p']), 'poisson':lambda:stats.poisson(p['lambda'])}[s['family']]()
+    return {'gamma':lambda:stats.gamma(p['shape'],scale=1/p['lambda']), 'uniform':lambda:stats.uniform(p['min'],p['max']-p['min']), 'normal':lambda:stats.norm(p['mean'],p['sigma']), 'exponential':lambda:stats.expon(scale=1/p['lambda']), 'beta':lambda:stats.beta(p['a'],p['b']), 'bernoulli':lambda:stats.bernoulli(p['p']), 'poisson':lambda:stats.poisson(p['lambda'])}[s['family']]()
 
 
 @functools.lru_cache(None)
@@ -168,6 +172,9 @@ def numeric_descriptor(root):
     inputs=term['inputs']; unary='x' in inputs and all(key=='x' or TERMS[value]['kind']=='constant' for key,value in inputs.items())
     if unary:
         parent,bounds,_=numeric_descriptor(inputs['x']); lo,hi=bounds; op=term['operation']; values={k:constant(v) for k,v in inputs.items() if k!='x'}
+        if op=='less' and TERMS[inputs['x']].get('family')=='gamma':
+            inside=parent(values['b'])
+            return lambda y:0.0 if y<0 else 1-inside if y<1 else 1.0,(0,1),'Gamma threshold probability'
         if op in ('add','subtract','multiply','divide'):
             b=values.get('b'); a=b if op=='multiply' else 1/b if op=='divide' else 1; shift=b if op=='add' else -b if op=='subtract' else 0
             if a==0:return lambda y:float(y>=shift),(shift,shift),'point mass'
