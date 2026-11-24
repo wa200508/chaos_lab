@@ -1,3 +1,4 @@
+import {hydrogenGroundState} from '../src/hydrogen.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { compileModel, defaultModel, makeNode, symbolic, toSysML, exportSymbolicGraph } from '../src/engine.js';
@@ -29,3 +30,18 @@ test('a custom function with twelve named inputs preserves port identities and c
 test('undeclared variables on manually configured custom blocks are model errors',()=>{const m=unary('custom',{expression:'x+missing'});m.nodes[1].portMode='manual';m.nodes[1].inputPorts=[{name:'x',default:'0'}];assert.ok(compileModel(m).errors.some(e=>e.includes('Declare an input port')));});
 test('custom feedback uses the explicit delay initial port and supports derived initial laws',()=>{const x=source('uniform','x'),initial=operation('custom','initial',{expression:'x^2'}),f=operation('custom','y',{expression:'2*state'}),delay=operation('delay','delay');const m=graph([x,initial,f,delay],[{from:'x',to:'initial',port:'x'},{from:'initial',to:'delay',port:'initial'},{from:'delay',to:'y',port:'state'},{from:'y',to:'delay',port:'x'}],2);close(createDistributionRenderer().cdf(law(m),1),.5);});
 test('a tap can observe any named custom input, including an unconnected default',()=>{const f=operation('custom','y',{expression:'alpha+beta'});f.inputPorts=[{name:'alpha',default:'1/3'},{name:'beta',default:'2'}];f.portMode='manual';const tap=makeNode('tap');tap.id='tap';tap.source={id:'y',port:'in',inputPort:'alpha'};const a=compileModel(graph([f,tap]));assert.deepEqual(a.errors,[]);assert.equal(a.laws.tap.term.value,'1/3');});
+
+test('hydrogen 1s amplitude and sphere probabilities agree at three probe radii', async () => {
+  const model = hydrogenGroundState();
+  for (const r of [0, 1, 2]) {
+    model.nodes.find(node => node.id === 'probe').params.value = r;
+    const analysis = compileModel(model);
+    assert.deepEqual(analysis.errors, []);
+    const renderer = createDistributionRenderer();
+    const enclosed = 1 - Math.exp(-2*r) * (1 + 2*r + 2*r*r);
+    close(renderer.cdf(analysis.laws.radius, r), enclosed);
+    close(renderer.render(analysis.laws.insideTap).stats.mean, enclosed);
+    close(renderer.render(analysis.laws.radialTap).stats.mean, 1.5);
+    close(renderer.render(analysis.laws.psi).stats.mean, Math.exp(-r)/Math.sqrt(Math.PI));
+  }
+});

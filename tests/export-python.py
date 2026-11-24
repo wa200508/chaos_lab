@@ -17,3 +17,12 @@ output=root/'python-visualization.png'
 subprocess.run([sys.executable,str(root/'logistic.py'),'--output',str(output),'--cdf-points','64'],check=True,timeout=120)
 assert output.stat().st_size>10000
 print('Python exports passed symbolic equations, source identity, analytic CDFs, and visualization rendering.')
+
+import math
+spec = importlib.util.spec_from_file_location('hydrogen', root / 'hydrogen.py')
+hydrogen = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(hydrogen)
+outputs = hydrogen.PAYLOAD['graph']['outputs']
+for node, point, expected in [('radialTap', 1, 1-5*math.exp(-2)), ('insideTap', 0, 5*math.exp(-2))]:
+    cdf, _, _ = hydrogen.numeric_descriptor(outputs[node]['root'])
+    assert abs(cdf(point)-expected) < 1e-12

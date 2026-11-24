@@ -11,3 +11,10 @@ for (name,expected) in [("square",.5),("difference",1.0),("twelve",.5)]
     @test length(law.source_ids)==(name=="square" ? 1 : name=="twelve" ? 12 : 0)
 end
 println("Julia exports passed symbolic equation DAG, shared-source identity, and analytic CDF evaluation.")
+
+hydrogen = Module(:HydrogenFixture)
+Base.include(hydrogen, joinpath(root, "hydrogen.jl"))
+outputs = getfield(hydrogen, :PAYLOAD)["graph"]["outputs"]
+descriptor(id) = Base.invokelatest(getfield(hydrogen, :numeric_descriptor), outputs[id]["root"])
+@test Base.invokelatest(descriptor("radialTap").cdf, 1.0) ≈ 1 - 5exp(-2)
+@test Base.invokelatest(descriptor("insideTap").cdf, 0.0) ≈ 5exp(-2)

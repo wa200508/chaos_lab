@@ -4,6 +4,8 @@ A visual studio for symbolic probability systems. Source blocks define probabili
 
 [Download releases](https://github.com/wa200508/chaos_lab/releases) · [Private hosted dashboard](https://chaos-lab-studio.sunsetsaffron1.chatgpt.site) · [Mathematical contract](docs/symbolic-engine.md)
 
+[Explore the hydrogen 1s ground-state example](docs/examples/hydrogen-1s.md)
+
 ## Run locally
 
 Native preview releases bundle the web app and its local server. **No Node, Python, or Julia installation is needed to run the dashboard.** A current browser is required. The server opens **http://127.0.0.1:4173** and serves only the bundled app; keep its process running while you work.
