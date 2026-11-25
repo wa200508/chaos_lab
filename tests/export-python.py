@@ -26,3 +26,7 @@ outputs = hydrogen.PAYLOAD['graph']['outputs']
 for node, point, expected in [('radialTap', 1, 1-5*math.exp(-2)), ('insideTap', 0, 5*math.exp(-2))]:
     cdf, _, _ = hydrogen.numeric_descriptor(outputs[node]['root'])
     assert abs(cdf(point)-expected) < 1e-12
+
+meridian_image = root / 'meridian.png'
+subprocess.run([sys.executable, str(root/'meridian.py'), '--output', str(meridian_image)], check=True, timeout=120)
+assert meridian_image.stat().st_size > 10000

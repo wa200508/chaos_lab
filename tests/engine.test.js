@@ -61,3 +61,13 @@ test('orbital detections preserve the radial CDF and have isotropic directions',
   close(inside/cloud.length,1-5*Math.exp(-2),.012);
   for(const sum of squares) close(sum/cloud.length,1,.06);
 });
+
+test('2p meridian tap retains its equatorial node and samples the angular Born law', async () => {
+  const {meridianData} = await import('../src/meridian.js');
+  const spec = {expression:'r*u*exp(-r/2)/sqrt(32*pi)', extent:12};
+  const {density, points} = meridianData(spec, 8000, 42);
+  assert.equal(density(2, 0), 0);
+  assert.ok(Math.abs(density(0, 2) - Math.exp(-2)/(8*Math.PI)) < 1e-12);
+  const cosineSquared = points.reduce((sum, [x,z,y]) => sum + z*z/(x*x+y*y+z*z), 0)/points.length;
+  assert.ok(Math.abs(cosineSquared - 3/5) < 0.02);
+});

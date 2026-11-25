@@ -13,7 +13,9 @@ export async function commitModel(model,branch=model.branch||'main',message=mode
  await pfs.writeFile(dir+'/model.symbolic.json',JSON.stringify(exportSymbolicGraph(compileModel(stored)),null,2),'utf8');
  await git.add({fs,dir,filepath:'model.symbolic.json'});await pfs.writeFile(dir+'/model.sysml',toSysML(model),'utf8');
  await git.add({fs,dir,filepath:'model.json'});await git.add({fs,dir,filepath:'model.sysml'});
- return git.commit({fs,dir,ref:'refs/heads/'+branch,author,message:message+`\n\nModel: ${model.name}\nBlocks: ${model.nodes.length}\nEngine: ${ENGINE_VERSION}\nVisualization draws: ${model.samples}\nVisualization seed: ${model.seed}\nFormat: SysML 2.0 + graph JSON`});
+ const oid=await git.commit({fs,dir,ref:'refs/heads/'+branch,author,message:message+`\n\nModel: ${model.name}\nBlocks: ${model.nodes.length}\nEngine: ${ENGINE_VERSION}\nVisualization draws: ${model.samples}\nVisualization seed: ${model.seed}\nFormat: SysML 2.0 + graph JSON`});
+ await pfs.flush();
+ return oid;
 }
 // Import the original Git objects so commit IDs and ancestry match the checkout.
 async function loadLibrary() {
@@ -41,6 +43,7 @@ async function loadLibrary() {
  }
  const branch=await git.currentBranch({fs,dir})||'main';
  await git.checkout({fs,dir,ref:branch,force:true});
+ await pfs.flush();
  return head('main');
 }
 export async function initRepository(){
@@ -65,7 +68,7 @@ export async function history(){
  while(result.length<items.length){const ready=items.filter(c=>!seen.has(c.oid)&&!items.some(child=>!seen.has(child.oid)&&child.commit.parent.includes(c.oid))).sort((a,b)=>b.commit.author.timestamp-a.commit.author.timestamp||a.order-b.order);if(!ready.length)break;const next=ready[0];seen.add(next.oid);result.push(next);}
  return result;
 }
-export async function newBranch(name,oid){if(!/^[a-zA-Z0-9][a-zA-Z0-9_/-]*$/.test(name)||name.includes('..')||name.endsWith('/'))throw Error('Use letters, numbers, dashes, and slashes for the branch name.');await git.branch({fs,dir,ref:name,object:oid});return name;}
+export async function newBranch(name,oid){if(!/^[a-zA-Z0-9][a-zA-Z0-9_/-]*$/.test(name)||name.includes('..')||name.endsWith('/'))throw Error('Use letters, numbers, dashes, and slashes for the branch name.');await git.branch({fs,dir,ref:name,object:oid});await pfs.flush();return name;}
 export async function exportRepository(){
  const entries=[];async function walk(path,base){for(const name of await pfs.readdir(path)){const target=path+'/'+name,s=await pfs.stat(target);if(s.isDirectory())await walk(target,base+name+'/');else entries.push({name:base+name,data:await pfs.readFile(target)});}}
  await walk(dir,'chaos-lab/');
