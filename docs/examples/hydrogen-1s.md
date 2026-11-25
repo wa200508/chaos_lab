@@ -2,6 +2,8 @@
 
 Choose **New model → Starting point → Hydrogen atom · 1s ground state**. Select any physics block to inspect its inputs, equation and derivation. The model uses atomic units and a spinless electron bound to a point nucleus.
 
+The purple **Electron position X** block declares a three-dimensional quantity in Bohr radii at the system boundary. Its connection to the Born operator specifies which law the state must determine. The sphere probe and spatial tap both observe that same quantity. Select the declaration to see its law provider in the inspector.
+
 | Stage | What the blocks compute |
 |---|---|
 | Hamiltonian | **Kinetic energy** supplies $-\nabla^2/(2\mu)$. **Coulomb potential** supplies $-Z/r$. **Hamiltonian** adds them. Hydrogen with a fixed proton uses $\mu=Z=1$. |

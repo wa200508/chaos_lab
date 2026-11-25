@@ -18,3 +18,9 @@ outputs = getfield(hydrogen, :PAYLOAD)["graph"]["outputs"]
 descriptor(id) = Base.invokelatest(getfield(hydrogen, :numeric_descriptor), outputs[id]["root"])
 @test Base.invokelatest(descriptor("radialTap").cdf, 1.0) ≈ 1 - 5exp(-2)
 @test Base.invokelatest(descriptor("insideTap").cdf, 0.0) ≈ 5exp(-2)
+
+furnace=Module(:FurnaceFixture)
+Base.include(furnace,joinpath(root,"furnace.jl"))
+payload=getfield(furnace,:PAYLOAD)
+delta=Base.invokelatest(getfield(furnace,:numeric_descriptor),payload["graph"]["outputs"]["tapDiff"]["root"])
+@test Base.invokelatest(delta.cdf,sqrt(.0018)) ≈ .8413447460685429

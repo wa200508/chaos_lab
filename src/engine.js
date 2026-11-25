@@ -1,4 +1,6 @@
+import {matrixRows,solveBalances} from './constraints.js';
 import nerdamer from 'nerdamer/all.js';
+import {quantityTrace} from './quantities.js';
 import {quantumOps,applyQuantum} from './quantum.js';
 import {inputPorts} from './ports.js';
 import {createLawFactory, ENGINE_VERSION} from './laws.js';
@@ -6,6 +8,7 @@ export {ENGINE_VERSION, exportSymbolicGraph} from './laws.js';
 export const clone = o => JSON.parse(JSON.stringify(o));
 export const CATALOG = [
  ['Random','Uniform','random','U','uniform'],['Random','Normal','random','N','normal'],['Random','Exponential','random','λ','exponential'],['Random','Bernoulli','random','B','bernoulli'],['Random','Poisson','random','P','poisson'],['Random','Gamma','random','Γ','gamma'],['Random','Beta','random','β','beta'],
+ ['Quantities','Declare quantity','quantity','X','quantity'],['Quantities','Linear balances','constraint','A','linearSystem'],['Random','Conditional normal','conditional','N','conditionalNormal'],
  ['Functions','Logistic map','function','ƒ','logistic'],['Functions','Custom function','function','ƒ','custom'],['Functions','Tent map','function','⋀','tent'],['Functions','Sine','function','sin','sin'],['Functions','Cosine','function','cos','cos'],['Functions','Hyperbolic tangent','function','tanh','tanh'],['Functions','Exponential','function','eˣ','exp'],['Functions','Logarithm','function','ln','log'],['Functions','Square root','function','√','sqrt'],
  ['Math','Constant','parameter','#','constant'],['Math','Add','math','+','add'],['Math','Subtract','math','−','subtract'],['Math','Multiply','math','×','multiply'],['Math','Divide','math','÷','divide'],['Math','Power','math','xⁿ','power'],['Math','Absolute','math','|x|','abs'],['Math','Modulo','math','mod','modulo'],['Math','Minimum','math','min','min'],['Math','Maximum','math','max','max'],['Math','Clamp','math','⌈x⌉','clamp'],
  ['Calculus','Differentiate','calculus','∂','differentiate'],['Calculus','Integrate','calculus','∫','integrate'],['Calculus','Accumulate','calculus','Σ','accumulate'],
@@ -13,7 +16,7 @@ export const CATALOG = [
  ['Logic','Greater than','logic','>','greater'],['Logic','Less than','logic','<','less'],['Logic','Equal','logic','=','equal'],['Logic','AND','logic','∧','and'],['Logic','OR','logic','∨','or'],['Logic','NOT','logic','¬','not'],['Logic','Switch','logic','⇄','switch'],
  ['Dynamics','Unit delay','delay','z⁻¹','delay'],['Dynamics','Distribution tap','tap','▥','tap']
 ].map(([category,name,type,symbol,op])=>({category,name,type,symbol,op})).concat(Object.values(quantumOps));
-export function makeNode(op,x=100,y=100) { const c=CATALOG.find(c=>c.op===op);if(quantumOps[op]){const {inputs,formula,params,...definition}=c;return {id:'n'+crypto.randomUUID().slice(0,8),...definition,x,y,params:{...params},source:null};}return {id:'n'+crypto.randomUUID().slice(0,8),...c,x,y,params:{...(op==='gamma'?{shape:3}:{}),value:op==='constant'?3.9:1,min:0,max:1,mean:0,sigma:1,lambda:1,p:0.5,r:op==='tent'?1.99:3.9,expression:op==='logistic'?'r*x*(1-x)':'x^2',a:2,b:2,steps:12,variable:'x'},source:null}; }
+export function makeNode(op,x=100,y=100) { const c=CATALOG.find(c=>c.op===op);if(op==='linearSystem')return {...c,id:'n'+crypto.randomUUID().slice(0,8),x,y,params:{matrix:'1,1;1,-1'},source:null};if(op==='quantity')return {...c,id:'n'+crypto.randomUUID().slice(0,8),x,y,params:{},units:'',domain:'real',source:null};if(quantumOps[op]){const {inputs,formula,params,...definition}=c;return {id:'n'+crypto.randomUUID().slice(0,8),...definition,x,y,params:{...params},source:null};}return {id:'n'+crypto.randomUUID().slice(0,8),...c,x,y,params:{...(op==='gamma'?{shape:3}:{}),value:op==='constant'?3.9:1,min:0,max:1,mean:0,sigma:1,lambda:1,p:0.5,r:op==='tent'?1.99:3.9,expression:op==='logistic'?'r*x*(1-x)':'x^2',a:2,b:2,steps:12,variable:'x'},source:null}; }
 export function defaultModel(variant='logistic') {
  const nodes=[makeNode('uniform',46,141),makeNode('constant',303,24),makeNode('logistic',303,141),makeNode('delay',594,141),makeNode('tap',46,304),makeNode('tap',367,304)];
  nodes.forEach((n,i)=>n.id=['random','parameter','logistic','delay','inputTap','outputTap'][i]);nodes[1].name='Growth rate';nodes[1].params.value=3.9;nodes[2].name='Logistic map';nodes[4].name='Input distribution';nodes[4].source={id:'random',port:'out'};nodes[5].name='Output distribution';nodes[5].source={id:'logistic',port:'out'};
@@ -27,9 +30,25 @@ export function histogram(a,bins=34){const s=stats(a),range=(s.max-s.min)||1,cou
 export function compileModel(model) {
  const factory=createLawFactory(),outputs={},quantum={},errors=[],nodes=model.nodes.filter(n=>n.type!=='tap');
  const incoming=id=>model.edges.filter(e=>e.to===id),constant=factory.constant,delays=new Map(),sums=new Map();
+ const bindings=new Map(),solutions=new Map();
+ const providers=new Map(nodes.filter(n=>n.op==='born'||n.op==='linearSystem').map(n=>[n.id,n.op]));
+ const binds=e=>(providers.get(e.to)==='born'&&e.port==='observable')||(providers.get(e.to)==='linearSystem'&&/^unknown[1-9]\d*$/.test(e.port));
+ for(const edge of model.edges.filter(binds))bindings.set(edge.from,[...(bindings.get(edge.from)||[]),edge]);
  const stateEdge=(node,edge)=>edge.port==='feedback'&&!(node.op==='custom'&&inputPorts(node).some(p=>p.name==='feedback'));
- const activeEdges=node=>{const edges=incoming(node.id);if(node.op!=='custom')return edges;const used=new Set(nerdamer(node.params.expression).variables());return edges.filter(edge=>used.has(edge.port)||stateEdge(node,edge));};
+ const activeEdges=node=>{const edges=incoming(node.id);
+   if(providers.has(node.id))return edges.filter(e=>!binds(e));
+   if(node.op==='quantity')return [...edges,...(bindings.get(node.id)||[]).map(e=>({from:e.to,to:node.id,port:'law',solution:e.port}))];
+   if(node.op!=='custom')return edges;const used=new Set(nerdamer(node.params.expression).variables());return edges.filter(edge=>used.has(edge.port)||stateEdge(node,edge));};
  function expressionFor(node,get,step,previous=null){
+   if(node.op==='quantity'){
+     if(activeEdges(node).length!==1)throw Error('A declaration needs exactly one law provider.');
+     return get('law');
+   }
+   if(node.op==='conditionalNormal'){
+     if(!(Number(node.params.sigma)>0))throw Error('Conditional standard deviation must be positive.');
+     const noise=factory.source(node.id,'normal',{mean:0,sigma:node.params.sigma});
+     return factory.apply('add',{x:get('mean',node.params.mean??0),b:noise});
+   }
    if(['custom','differentiate','integrate'].includes(node.op)){
      let expression=node.params.expression;
      if(node.op==='differentiate')expression=nerdamer.diff(expression,'x').toString();
@@ -78,9 +97,44 @@ export function compileModel(model) {
        if(node.type==='quantum'){
          const inputs=Object.fromEntries(ordinary.map(e=>[e.port,quantum[e.from]]));
          const field=applyQuantum(node,inputs);
+         if(node.op==='born'){
+           const observable=incoming(node.id).find(e=>e.port==='observable');
+           if(observable){
+             const declaration=nodes.find(n=>n.id===observable.from);
+             if(declaration?.op!=='quantity'||declaration.domain!=='space3')throw Error('Connect a three-dimensional position declaration.');
+             if(declaration.units && declaration.units!=='a₀')throw Error('Position in this atomic-unit solver uses a₀.');
+             field.observable=declaration.id;
+           }
+         }
          field.inputs=Object.fromEntries(ordinary.map(e=>[e.port,e.from]));
          quantum[node.id]=field;
+         if(field.observable)field.inputs.observable=field.observable;
          if(field.scalar!==undefined)outputs[node.id]=constant(field.scalar);
+       }else if(node.op==='linearSystem'){
+         const matrix=matrixRows(node.params.matrix);
+         const references=incoming(node.id).filter(binds);
+         for(const edge of references){
+           const variable=nodes.find(n=>n.id===edge.from);
+           if(variable?.op!=='quantity'||variable.domain!=='real'||Number(edge.port.slice(7))>matrix.length)
+             throw Error('Each unknown binds a declared real scalar.');
+         }
+         const rhs=matrix.map((_,i)=>{const edge=ordinary.find(e=>e.port==='rhs'+(i+1));
+           if(!edge||!outputs[edge.from])throw Error('Connect a scalar right-hand side for every balance.');
+           return outputs[edge.from];});
+         const values=solveBalances(matrix,rhs,factory);
+         solutions.set(node.id,values);
+         outputs[node.id]=values[0];
+       }else if(node.op==='quantity'){
+         if(ordinary.length!==1||ordinary[0].port!=='law')throw Error('A declaration needs exactly one law provider.');
+         const provider=ordinary[0].from;
+         if(node.domain==='space3'){
+           if(quantum[provider]?.kind!=='born')throw Error('A spatial declaration requires a position probability law.');
+           quantum[node.id]={...quantum[provider],observable:quantum[provider].observable||node.id};
+         }else{
+           const value=ordinary[0].solution?.startsWith('unknown')?solutions.get(provider)?.[Number(ordinary[0].solution.slice(7))-1]:outputs[provider];
+           if(!value)throw Error('A real quantity requires a scalar law.');
+           outputs[node.id]=value;
+         }
        }else{
          if(ordinary.some(e=>quantum[e.from]&&!outputs[e.from]))throw Error('This port requires a scalar. Connect a quantum measurement first.');
          outputs[node.id]=expressionFor(node,get,step,feedback?outputs[feedback.from]:null);
@@ -96,15 +150,33 @@ export function compileModel(model) {
    const source=node.source;
    if(source?.port==='in'){
      const name=source.inputPort||'x',edge=model.edges.find(e=>e.to===source.id&&e.port===name);
-     if(edge){outputs[node.id]=outputs[edge.from];if(quantum[edge.from])quantum[node.id]=quantum[edge.from];}else{const target=nodes.find(n=>n.id===source.id),port=target&&inputPorts(target).find(p=>p.name===name);if(port&&target.type!=='quantum')outputs[node.id]=constant(port.default);}
+     if(edge){outputs[node.id]=outputs[edge.from];if(quantum[edge.from])quantum[node.id]=quantum[edge.from];}else{const target=nodes.find(n=>n.id===source.id),port=target&&inputPorts(target).find(p=>p.name===name);if(port&&target.type!=='quantum'&&target.op!=='quantity')outputs[node.id]=constant(port.default);}
    }else if(source){outputs[node.id]=outputs[source.id];if(quantum[source.id])quantum[node.id]=quantum[source.id];}
  }catch(error){errors.push(`${node.name}: ${error.message}`);}
  const laws=Object.fromEntries(Object.entries(outputs).filter(([,term])=>term).map(([id,term])=>[id,factory.law(term)]));
- return {engine:ENGINE_VERSION,laws,quantum,terms:factory.terms,errors,iterations};
+ return {engine:ENGINE_VERSION,laws,quantum,quantities:quantityTrace(model,laws,quantum,bindings),terms:factory.terms,errors,iterations};
 }
 // Backwards-compatible name; this now compiles laws and never generates samples.
 export const simulate=compileModel;
 export function toSysML(model){const id=s=>String(s).replace(/[^a-zA-Z0-9_]/g,'_'),doc=s=>String(s).replaceAll('*/','* /');let source=`package ${id(model.name)} {\n    private import ScalarValues::*;\n    doc /* Engine: ${ENGINE_VERSION}. Ports denote symbolic random variables; numerical evaluation occurs only at visualization taps. */\n\n    port def Signal {\n        out item value : Real;\n    }\n\n    part def Block {\n        port output : Signal;\n    }\n\n    item def QuantumValue;\n    port def QuantumSignal { out item value : QuantumValue; }\n    part def QuantumBlock { port output : QuantumSignal; }\n\n    part model {\n        attribute visualizationDrawCount : Integer = ${model.samples};\n        attribute iterations : Integer = ${model.iterations};\n        attribute visualizationSeed : Integer = ${model.seed};\n`;
- for(const n of model.nodes){let ports;try{ports=inputPorts(n);}catch{ports=(n.inputPorts||[]).map(p=>typeof p==='string'?{name:p}:p);}const portNames=new Set([...ports.map(p=>p.name),...model.edges.filter(e=>e.to===n.id).map(e=>e.port)]);source+=`\n        part ${id(n.id)} : ${n.type==='quantum'&&!['sphereMass','eigenenergy'].includes(n.op)?'QuantumBlock':'Block'} {\n            doc /* ${doc(n.name)} | ${doc(n.op)} */\n`;for(const [k,v]of Object.entries(n.params)){if(typeof v==='number')source+=`            attribute ${portNames.has(k)?'default_':''}${id(k)} : Real = ${v};\n`;}for(const name of portNames){const port=ports.find(p=>p.name===name);source+=`            port ${id(name)} : ~${n.type==='quantum'?'QuantumSignal':'Signal'};\n`;if(port)source+=`            doc /* ${id(name)}: ${doc(port.description||port.label||name)} Default: ${doc(port.default??'0')}. */\n`;}if(['function','calculus'].includes(n.type))source+=`            doc /* expression: ${doc(n.params.expression)} */\n`;if(n.source)source+=`            doc /* Visualization observes ${doc(n.source.id)}.${doc(n.source.port==='in'?n.source.inputPort||'x':'output')}. */\n`;source+='        }\n';}
- for(const e of model.edges)source+=`\n        connect ${id(e.from)}.output to ${id(e.to)}.${id(e.port)};`;
+ const sourceOf=tap=>{
+   const port=tap.source;
+   if(port?.port==='in')return model.edges.find(e=>e.to===port.id&&e.port===(port.inputPort||'x'))?.from;
+   return port?.id;
+ };
+ const spatial=n=>n?.domain==='space3'||(n?.type==='quantum'&&!['sphereMass','eigenenergy'].includes(n.op));
+ const groups=[...new Set(model.nodes.map(n=>n.subsystem||''))];
+ const paths=new Map();
+ for(const [index,group] of groups.entries()){
+ const scope='subsystem_'+index;
+ if(group)source+=`\n        part ${scope} {\n            doc /* ${doc(group)} */\n`;
+ for(const n of model.nodes.filter(n=>(n.subsystem||'')===group)){
+ paths.set(n.id,(group?scope+'.':'')+id(n.id));let ports;try{ports=inputPorts(n);}catch{ports=(n.inputPorts||[]).map(p=>typeof p==='string'?{name:p}:p);}const portNames=new Set([...ports.map(p=>p.name),...model.edges.filter(e=>e.to===n.id).map(e=>e.port)]);source+=`\n        part ${id(n.id)} : ${spatial(n)?'QuantumBlock':'Block'} {\n            doc /* ${doc(n.name)} | ${doc(n.op)} */\n`;if(n.op==='linearSystem')source+=`            doc /* A x = b, coefficient rows: ${doc(n.params.matrix)}. Unknown ports bind declared quantities. */\n`;if(n.units||n.domain)source+=`            doc /* Quantity domain ${doc(n.domain||'real')}, units ${doc(n.units||'unspecified')}. */\n`;for(const [k,v]of Object.entries(n.params)){if(typeof v==='number')source+=`            attribute ${portNames.has(k)?'default_':''}${id(k)} : Real = ${v};\n`;}for(const name of portNames){const port=ports.find(p=>p.name===name);source+=`            port ${id(name)} : ~${n.type==='quantum'||n.domain==='space3'?'QuantumSignal':'Signal'};\n`;if(port)source+=`            doc /* ${id(name)}: ${doc(port.description||port.label||name)} Default: ${doc(port.default??'0')}. */\n`;}if(['function','calculus'].includes(n.type))source+=`            doc /* expression: ${doc(n.params.expression)} */\n`;if(n.type==='tap')source+=`            port observation : ~${spatial(model.nodes.find(s=>s.id===sourceOf(n)))?'QuantumSignal':'Signal'};\n`;if(n.source)source+=`            doc /* Visualization observes ${doc(n.source.id)}.${doc(n.source.port==='in'?n.source.inputPort||'x':'output')}. */\n`;source+='        }\n';}
+ if(group)source+='        }\n';
+ }
+ for(const e of model.edges)source+=`\n        connect ${paths.get(e.from)}.output to ${paths.get(e.to)}.${id(e.port)};`;
+ for(const tap of model.nodes.filter(n=>n.type==='tap')){
+   const from=paths.get(sourceOf(tap));
+   if(from)source+=`\n        connect ${from}.output to ${paths.get(tap.id)}.observation;`;
+ }
  return source+'\n    }\n}\n';}

@@ -17,7 +17,15 @@ export function meridianData(spec, count, seed) {
   if (expr.variables().some(name => !['r','u'].includes(name))) throw Error('Meridian amplitude uses r and u = cos(θ).');
   const evaluate = expr.buildFunction(['r','u']);
   const density = spec.isDensity ? evaluate : (r,u) => evaluate(r,u)**2;
-  const nr=256, nu=128, limit=2*spec.extent;
+  let points;
+  return {get points(){return points??=drawPositions(density,spec.extent,count,seed);},extent:spec.extent,view:spec.view||'slice',density:(x,z)=>{
+    const r=Math.hypot(x,z);
+    return density(r,r?z/r:1);
+  }};
+}
+
+function drawPositions(density,extent,count,seed){
+  const nr=256, nu=128, limit=2*extent;
   const weights=new Float64Array(nr*nu);
   let sum=0;
   for(let i=0;i<nr;i++){
@@ -30,7 +38,7 @@ export function meridianData(spec, count, seed) {
   if (!(sum>0 && Number.isFinite(sum))) throw Error('Amplitude must have finite positive mass in the field.');
   let state=seed>>>0;
   function random(){state=(Math.imul(1664525,state)+1013904223)>>>0;return (state+.5)/4294967296;}
-  const points=Array.from({length:Math.min(count,50000)},()=>{
+  return Array.from({length:Math.min(count,50000)},()=>{
     const target=random()*sum;
     let lo=0, hi=weights.length-1;
     while(lo<hi){const mid=(lo+hi)>>>1;if(weights[mid]<target)lo=mid+1;else hi=mid;}
@@ -38,8 +46,4 @@ export function meridianData(spec, count, seed) {
     const angle=random()*2*Math.PI, transverse=r*Math.sqrt(1-u*u);
     return [transverse*Math.cos(angle),r*u,transverse*Math.sin(angle)];
   });
-  return {points,extent:spec.extent,view:spec.view||'slice',density:(x,z)=>{
-    const r=Math.hypot(x,z);
-    return density(r,r?z/r:1);
-  }};
 }

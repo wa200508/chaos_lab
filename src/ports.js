@@ -1,3 +1,4 @@
+import {matrixRows} from './constraints.js';
 import {quantumOps} from './quantum.js';
 import nerdamer from 'nerdamer/all.js';
 const reserved=new Set(['pi','e','E','sin','cos','tan','tanh','exp','log','sqrt','abs','factorial','gamma']);
@@ -11,7 +12,14 @@ export function customInputPorts(node){
  return names.map(name=>{validatePortName(name);if(seen.has(name))throw Error('Each input port needs a unique name.');seen.add(name);const old=previous.find(p=>(typeof p==='string'?p:p.name)===name);return {name,label:typeof old==='object'&&old.label?old.label:name,default:typeof old==='object'&&old.default!==undefined?String(old.default):fallback(node,name),description:`Input variable ${name}. Its wire carries a symbolic random variable; the default is used when unconnected.`};});
 }
 export function inputPorts(node){
- if(quantumOps[node.op])return Object.entries(quantumOps[node.op].inputs).map(([name,kind])=>({name,label:name,description:'Required '+quantumOps[kind].name+' output.',default:'required'}));
+ if(node.op==='linearSystem'){
+   const rows=matrixRows(node.params.matrix);
+   return [...rows.map((_,i)=>({name:'rhs'+(i+1),label:'b'+(i+1),description:'Right-hand side of balance '+(i+1),default:'required'})),
+     ...rows.map((_,i)=>({name:'unknown'+(i+1),label:'x'+(i+1),description:'Declaration determined by this solution component.',default:'anonymous'}))];
+ }
+ if(node.op==='quantity')return [{name:'law',label:'law',description:'Bind an existing law to this declaration.',default:'unbound'}];
+ if(node.op==='conditionalNormal')return [{name:'mean',label:'mean',description:'Conditional mean. Each instance contributes independent Gaussian noise.',default:String(node.params.mean??0)}];
+ if(quantumOps[node.op])return Object.entries(quantumOps[node.op].inputs).map(([name,kind])=>({name,label:name,description:'Required '+quantumOps[kind].name+' output.',default:'required'})).concat(node.op==='born'?[{name:'observable',label:'quantity',description:'Spatial quantity whose position law this operator determines.',default:'anonymous position'}]:[]);
  if(node.op==='custom')return customInputPorts(node);
  const make=(name,label,description)=>({name,label,description,default:fallback(node,name)});
  if(['random','parameter','tap'].includes(node.type))return [];

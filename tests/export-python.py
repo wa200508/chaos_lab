@@ -34,3 +34,11 @@ assert meridian_image.stat().st_size > 10000
 operator_image = root/'operator.png'
 subprocess.run([sys.executable,str(root/'hydrogen_operators.py'),'--output',str(operator_image)],check=True,timeout=120)
 assert operator_image.stat().st_size > 10000
+
+spec = importlib.util.spec_from_file_location('furnace',root/'furnace.py')
+furnace = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(furnace)
+furnace_root=furnace.PAYLOAD['graph']['outputs']['tapDiff']['root']
+cdf, _, _ = furnace.numeric_descriptor(furnace_root)
+assert abs(cdf(math.sqrt(.0018))-.8413447460685429)<1e-10
+assert furnace.PAYLOAD['graph']['quantities']['tapDiff']['canceled']==['temperature']

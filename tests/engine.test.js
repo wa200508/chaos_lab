@@ -98,3 +98,60 @@ test('the hydrogen operator graph responds to the Hamiltonian and quantum number
   const broken=compileModel(model);
   assert.ok(broken.errors.length);assert.equal(broken.quantum.field,undefined);
 });
+
+test('the shared furnace cancels one temperature source only at equal thermal responses',async()=>{
+ const {sharedFurnace}=await import('../src/furnace.js');
+ const {subsystemBoundary}=await import('../src/quantities.js');
+ const m=sharedFurnace(),a=compileModel(m);
+ assert.deepEqual(a.errors,[]);
+ assert.equal(a.laws.partA.cdf.variance,'17/5000');
+ assert.equal(a.laws.partB.cdf.variance,'17/5000');
+ assert.deepEqual(a.laws.difference.cdf,{kind:'normal',mean:'0',variance:'9/5000'});
+ assert.deepEqual(a.quantities.tapDiff.canceled,['temperature']);
+ assert.deepEqual(a.quantities.tapDiff.sources,['stockA','stockB']);
+ assert.equal(a.quantities.tapDiff.units,'mm');
+ assert.equal(subsystemBoundary(m,'Furnace').inputs.length,2);
+ m.nodes.find(n=>n.id==='shiftB').params.b=.02;
+ const changed=compileModel(m);
+ assert.equal(changed.laws.difference.cdf.variance,'43/10000');
+ assert.deepEqual(changed.quantities.tapDiff.canceled,[]);
+ assert.ok(changed.quantities.tapDiff.sources.includes('temperature'));
+});
+
+test('conditional residuals, declarations and repeated wires keep their identities',()=>{
+ const mu=source('normal','mean',{mean:3,sigma:2}),y=operation('conditionalNormal','conditional',{sigma:1});
+ const x=operation('quantity','alias'),diff=operation('subtract','diff');
+ const m=graph([mu,y,x,diff],[{from:'mean',to:'conditional',port:'mean'},{from:'conditional',to:'alias',port:'law'},
+   {from:'alias',to:'diff',port:'x'},{from:'conditional',to:'diff',port:'b'}]);
+ const a=compileModel(m);assert.deepEqual(a.errors,[]);
+ assert.equal(a.laws.alias.term,a.laws.conditional.term);
+ assert.equal(a.laws.alias.cdf.variance,'5');assert.equal(a.laws.diff.term.value,'0');
+ assert.deepEqual(a.quantities.conditional.sources,['mean','conditional']);
+ m.edges=m.edges.filter(e=>e.to!=='alias');
+ const unbound=compileModel(m);assert.equal(unbound.quantities.alias.origin,'unbound');
+ assert.equal(unbound.laws.alias,undefined);assert.ok(unbound.errors.length);
+});
+
+test('position is declared before solving and bound once to the derived joint law',()=>{
+ const m=hydrogenState(2,1,1),a=compileModel(m);
+ assert.deepEqual(a.errors,[]);assert.equal(m.nodes[0].id,'position');
+ assert.equal(a.quantities.position.provider,'density');assert.equal(a.quantities.position.origin,'system');
+ assert.equal(a.quantum.position.density,a.quantum.density.density);
+ assert.deepEqual(a.quantities.field.sources,['position']);assert.equal(a.quantities.field.units,'a₀');
+ m.edges=m.edges.filter(e=>e.port!=='observable');
+ assert.equal(compileModel(m).quantum.field,undefined);
+});
+
+test('coupled balance equations solve for declared quantities over one joint set of sources',()=>{
+ const nodes=[source('normal','T'),source('normal','S'),operation('linearSystem','balances',{matrix:'1,1;1,-1'}),
+   operation('quantity','x'),operation('quantity','y'),operation('subtract','difference')];
+ const pairs=[['T','balances','rhs1'],['S','balances','rhs2'],['x','balances','unknown1'],['y','balances','unknown2'],['x','difference','x'],['y','difference','b']];
+ const m=graph(nodes,pairs.map(([from,to,port])=>({from,to,port})));
+ const a=compileModel(m);assert.deepEqual(a.errors,[]);
+ assert.deepEqual(a.laws.x.term.linear.coefficients,{T:'1/2',S:'1/2'});
+ assert.deepEqual(a.laws.y.term.linear.coefficients,{T:'1/2',S:'-1/2'});
+ assert.deepEqual(a.laws.difference.term.linear.coefficients,{S:'1'});
+ assert.deepEqual(a.quantities.difference.canceled,['T']);
+ nodes[2].params.matrix='1,1;2,2';
+ const singular=compileModel(m);assert.ok(singular.errors.some(e=>e.includes('unique joint solution')));assert.equal(singular.laws.y,undefined);
+});

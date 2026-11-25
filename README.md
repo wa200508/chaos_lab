@@ -6,6 +6,16 @@ A visual studio for symbolic probability systems. Source blocks define probabili
 
 [Explore the hydrogen 1s ground-state example](docs/examples/hydrogen-1s.md)
 
+## Follow a shared source through a manufacturing line
+
+Choose **New model → Manufacturing · shared furnace**. Two parts have independent incoming thicknesses and pass through the same fluctuating furnace. Purple marks declared uncertain quantities and blue marks outputs that inherit uncertainty. Select a tap to inspect its units, distribution, effective sources, and contributions that cancel.
+
+![Shared furnace with three thickness distributions and the difference tap selected](docs/screenshots/shared-furnace.png)
+
+Both incoming thicknesses have mean 10 mm and standard deviation 0.03 mm. One shared temperature deviation has standard deviation 5 °C. At 0.01 mm/°C for both parts, each finished thickness has variance 0.0034 mm². The difference has variance 0.0018 mm². Change **Thermal expansion B → Second operand** to 0.02 and select **A − B** again. Temperature reappears among its sources, and the variance rises to 0.0043 mm².
+
+Use **Subsystems** to open the furnace's internal graph and inspect its boundary connections. Select blocks and assign them a subsystem to organize another design. **Declare quantity** lets a variable exist before its law is resolved. Bind its **law** port to an existing scalar law, or connect the declaration to a solver's unknown port. **Conditional normal** takes a mean signal and adds independent normal variation. **Linear balances** solves a square, nonsingular system with fixed symbolic coefficients and wired random right-hand sides. Repeated wires preserve the original random variables. Units are labels in the inspector; enter coefficients and inputs in consistent units.
+
 ## Run locally
 
 Native preview releases bundle the web app and its local server. **No Node, Python, or Julia installation is needed to run the dashboard.** A current browser is required. The server opens **http://127.0.0.1:4173** and serves only the bundled app; keep its process running while you work.

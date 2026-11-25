@@ -31,7 +31,8 @@ function color(value) {
 }
 const palette = Array.from({length:256}, (_,i)=>color(i/255));
 
-export function drawOrbital(canvas, {rate, points, extent, view, density}) {
+export function drawOrbital(canvas, data, view=data.view, extent=data.extent) {
+  const {rate,density}=data;
   const size = canvas.width, center = size / 2, scale = center / extent;
   const ctx = canvas.getContext('2d');
   const counts = new Float32Array(size * size);
@@ -41,7 +42,7 @@ export function drawOrbital(canvas, {rate, points, extent, view, density}) {
     const sigma = Math.max(0.7, scale * 0.032);
     const radius = Math.ceil(2.8 * sigma);
     const weights = Array.from({length:2*radius+1}, (_,i)=>Math.exp(-0.5*((i-radius)/sigma)**2));
-    for (const [x,y] of points) {
+    for (const [x,y] of data.points) {
       const col = Math.round(center + scale*x), row = Math.round(center - scale*y);
       for (let j=Math.max(0,row-radius);j<=Math.min(size-1,row+radius);j++) {
         const wy = weights[j-row+radius];
