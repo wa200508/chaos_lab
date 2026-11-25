@@ -250,6 +250,28 @@ def plot_orbital(axes, rate, seed, count):
         ax.set(title=title, xlabel='x (a₀)', ylabel='y (a₀)', aspect='equal')
 
 
+def meridian_panels(axes, spec, count, seed):
+    import numpy as np
+    r,u=sp.symbols('r u',real=True)
+    amplitude=sp.lambdify((r,u), parse_math(spec['expression'],{'r':r,'u':u}), 'numpy')
+    extent=spec['extent']
+    grid=(np.arange(192)+.5)*2*extent/192-extent
+    x,z=np.meshgrid(grid,grid); radius=np.hypot(x,z)
+    density=abs(amplitude(radius,z/radius))**2
+    rr=(np.arange(256)+.5)*2*extent/256
+    uu=(np.arange(128)+.5)*2/128-1
+    mass=rr[:,None]**2*abs(amplitude(rr[:,None],uu[None,:]))**2*np.ones((1,128))
+    rng=np.random.default_rng(int(seed)%2**32)
+    cells=rng.choice(mass.size,count,p=(mass/mass.sum()).ravel())
+    radius=(cells//128+rng.random(count))*2*extent/256
+    cosine=(cells%128+rng.random(count))*2/128-1
+    x=radius*np.sqrt(1-cosine**2)*np.cos(rng.uniform(0,2*np.pi,count))
+    projected=np.histogram2d(radius*cosine,x,bins=192,range=[[-extent,extent]]*2)[0]
+    for ax,field,title in zip(axes,[density,projected],['Meridian density','Projected detections']):
+        ax.imshow(np.sqrt(field),origin='lower',extent=(-extent,extent,-extent,extent),cmap='magma')
+        ax.set(title=title,xlabel='x (a₀)',ylabel='z (a₀)')
+
+
 def plot_visualizations(output=None,bins=34,cdf_points=128):
     import numpy as np
     import matplotlib.pyplot as plt
@@ -257,7 +279,8 @@ def plot_visualizations(output=None,bins=34,cdf_points=128):
     taps=[tap for tap in PAYLOAD['visualizations'] if tap.get('root')]
     if not taps: print('No attached visualization nodes.');return
     cloud_rates = [rate for tap in taps if (rate := orbital_rate(tap)) is not None]
-    rows = len(taps) + len(cloud_rates)
+    fields = [t['meridian'] for t in taps if t.get('meridian')]
+    rows = len(taps) + len(cloud_rates) + len(fields)
     fig,axes=plt.subplots(rows,2,figsize=(12,3.3*rows),squeeze=False)
     for row,tap in enumerate(taps):
         cdf,bounds,method=numeric_descriptor(tap['root']);lo,hi=bounds
@@ -276,6 +299,8 @@ def plot_visualizations(output=None,bins=34,cdf_points=128):
         for axis in axes[row]:axis.grid(alpha=.15);axis.set_xlabel('Port value')
     for row,rate in enumerate(cloud_rates, start=len(taps)):
         plot_orbital(axes[row],rate,PAYLOAD['model'].get('seed',42),PAYLOAD['model'].get('samples',10000))
+    for row,spec in enumerate(fields,start=len(taps)+len(cloud_rates)):
+        meridian_panels(axes[row],spec,PAYLOAD['model']['samples'],PAYLOAD['model']['seed'])
     fig.suptitle(PAYLOAD['model']['name']+' · symbolic laws, numerical visualization',fontsize=12);fig.tight_layout()
     if output:fig.savefig(output,dpi=160);plt.close(fig);print('Saved '+str(output))
     else:plt.show()

@@ -1,3 +1,4 @@
+import {meridianSpec,meridianData} from './meridian.js';
 import {cloudRate, positions, drawOrbital} from './orbital-cloud.js';
 import {hydrogenGroundState} from './hydrogen.js';
 import {createIcons,icons} from 'lucide';
@@ -15,7 +16,7 @@ const active=()=>state.tabs[state.active],model=()=>active().model;
 let toastTimer,runTimer;
 function toast(message){const e=$('#toast');e.textContent=message;e.classList.add('visible');clearTimeout(toastTimer);toastTimer=setTimeout(()=>e.classList.remove('visible'),3400);}
 function refreshIcons(){createIcons({icons,attrs:{'aria-hidden':'true'}});}
-function persist(){try{localStorage.setItem('chaos-lab-tabs-v1',JSON.stringify({tabs:state.tabs.map(t=>({...t,undo:[],redo:[]})),active:state.active}));}catch{toast('Device storage is full. Export your repository to keep a backup.');}}
+function persist(){try{localStorage.setItem(('chaos-lab-tabs-v1'+repo.libraryKey),JSON.stringify({tabs:state.tabs.map(t=>({...t,undo:[],redo:[]})),active:state.active}));}catch{toast('Device storage is full. Export your repository to keep a backup.');}}
 function edit(fn,rerender=true){const t=active();t.undo.push(clone(t.model));if(t.undo.length>60)t.undo.shift();t.redo=[];fn(t.model);t.dirty=true;persist();runSimulation();if(rerender)render();}
 function effectiveR(n){const e=model().edges.find(e=>e.to===n.id&&e.port==='r');return e?model().nodes.find(n=>n.id===e.from)?.params.value:n.params.r;}
 function runSimulation(){const start=performance.now();state.sim=compileModel(model());state.renderer=createDistributionRenderer();state.finalDraws=new Map();state.elapsed=performance.now()-start;}
@@ -53,12 +54,15 @@ function graphHTML(m,compare=false){let wires=m.edges.map((e,index)=>{const a=m.
  for(const n of m.nodes.filter(n=>n.type==='tap'&&n.source)){const source=m.nodes.find(s=>s.id===n.source.id);if(!source)continue;const p=n.source.port==='in'?inPoint(source,n.source.inputPort||'x'):outPoint(source),q={x:n.x+nodeWidth(n)/2,y:n.y};wires+=`<path class="wire tap-wire" d="M ${p.x} ${p.y} L ${p.x+15} ${p.y} Q ${p.x+25} ${p.y} ${p.x+25} ${p.y+12} L ${p.x+25} ${q.y-28} Q ${p.x+25} ${q.y-17} ${p.x+12} ${q.y-17} L ${q.x+12} ${q.y-17} Q ${q.x} ${q.y-17} ${q.x} ${q.y}"/><circle class="wire-dot" cx="${p.x}" cy="${p.y}" r="2.4"/>`;}
  return `<svg class="wires" aria-label="Model connections">${wires}<path id="connection-ghost" class="connection-ghost" d=""/></svg>`+m.nodes.map(n=>nodeHTML(n,compare)).join('');}
 const cloudCache = new WeakMap();
-function cloudData(law, rendered, m) {
+function cloudData(law, rendered, m, tap) {
+  const field=meridianSpec(m,tap);
   const rate = cloudRate(law, rendered);
-  if (!rate) return null;
+  if (!rendered || (!rate && !field)) return null;
   if (!cloudCache.has(rendered)) {
-    const points = positions(rendered, m.samples, m.seed);
-    const data = {rate, points, extent:4, view:'cloud'};
+    let data;
+    try {
+      data=field?meridianData(field,m.samples,m.seed):{rate,points:positions(rendered,m.samples,m.seed),extent:4,view:'cloud'};
+    } catch {return null;}
     const canvas = document.createElement('canvas');
     canvas.width = canvas.height = 192;
     drawOrbital(canvas, data);
@@ -69,9 +73,9 @@ function cloudData(law, rendered, m) {
 }
 
 function orbitalPreview(node, rendered, m, compare) {
-  if (!node.orbitalCloud) return '';
+  if (!node.orbitalCloud && !node.meridian) return '';
   const analysis = compare ? state.compareSim : state.sim;
-  const data = cloudData(analysis.laws[node.id], rendered, m);
+  const data = cloudData(analysis.laws[node.id], rendered, m,node);
   if (!data) return '<small>Cloud requires a Gamma radius with shape 3.</small>';
   return `<button class="orbital-preview" data-action="openorbital" data-tap="${esc(node.id)}" ${compare?'disabled':''}>
     <img src="${data.preview}" alt="Projected position measurements around the nucleus">
@@ -80,11 +84,11 @@ function orbitalPreview(node, rendered, m, compare) {
 
 function openOrbital(element) {
   const id = element.dataset.tap;
-  const data = cloudData(state.sim.laws[id], visualizeNode(id), model());
+  const data = cloudData(state.sim.laws[id], visualizeNode(id), model(),model().nodes.find(n=>n.id===id));
   if (!data) return;
   const body = `<div class="orbital-stage"><canvas width="520" height="520" aria-label="Electron position cloud around the nucleus"></canvas>
     <aside class="orbital-controls"><label>Spatial view<select id="orbital-view"><option value="cloud">Projected detections</option><option value="slice">Central density slice</option></select></label>
-    <label>Field width<select id="orbital-width"><option value="2">4 a₀</option><option value="4" selected>8 a₀</option><option value="8">16 a₀</option></select></label>
+    <label>Field width<select id="orbital-width">${[.5,1,2].map(k=>`<option value="${data.extent*k}" ${k===1?'selected':''}>${2*data.extent*k} a₀</option>`).join('')}</select></label>
     <div class="orbital-key"><i></i> Nucleus</div><div class="orbital-ramp"></div><small>Low to high · square-root brightness</small>
     <p id="orbital-caption"></p></aside></div>`;
   modal('Orbital cloud', body, button('saveorbital','Save PNG','download','btn outline'), true);
@@ -95,10 +99,11 @@ function openOrbital(element) {
     const canvas = $('.orbital-stage canvas');
     canvas.setAttribute('aria-label', view==='slice'?'Central slice of spatial probability density':'Projected electron detections');
     drawOrbital(canvas,{...data,view,extent:Number($('#orbital-width').value)});
-    $('#orbital-caption').textContent = view==='slice'
+    $('#orbital-caption').textContent = data.density ? (view==='slice'?'Meridian density |ψ|² in the x–z plane. Brightness is relative to the peak in this window.':'Position detections projected onto x–z from the final density, using a finite radial and angular grid.') : view==='slice'
       ? 'Relative spatial density in the z = 0 plane. Its peak at the nucleus is 1.'
       : data.points.length.toLocaleString()+' positions from the final radial law, with isotropic directions, projected onto the x–y plane. Brightness shows local detection concentration.';
   }
+  $('#orbital-view').value=data.view;
   $('#orbital-view').onchange = repaint;
   $('#orbital-width').onchange = repaint;
   repaint();
@@ -165,7 +170,7 @@ async function save(){
  t.base=await repo.commitModel(snapshot,branch,snapshot.name);t.dirty=JSON.stringify(t.model)!==JSON.stringify(snapshot);await refreshRepository();persist();toast(`Committed ${t.base.slice(0,7)} on ${branch}`);
  }catch(e){toast('Could not commit: '+e.message);}finally{state.busy=false;render();}
 }
-async function openCommit(oid){try{const existing=state.tabs.findIndex(t=>t.base===oid&&!t.dirty);if(existing>=0){state.active=existing;}else{const m=await repo.readModel(oid);state.tabs.push({model:m,base:oid,dirty:false,undo:[],redo:[]});state.active=state.tabs.length-1;}state.selectedEdge=null;state.selected='logistic';state.selection=new Set(['logistic']);state.pan={x:0,y:0};state.zoom=1;state.source=false;runSimulation();persist();render();toast('Commit opened in a model tab');}catch(e){toast('Could not open commit: '+e.message);}}
+async function openCommit(oid){try{const existing=state.tabs.findIndex(t=>t.base===oid&&!t.dirty);if(existing>=0){state.active=existing;}else{const m=await repo.readModel(oid);state.tabs.push({model:m,base:oid,dirty:false,undo:[],redo:[]});state.active=state.tabs.length-1;}state.selectedEdge=null;state.selected=model().nodes.find(n=>n.op==='logistic')?.id||model().nodes[0]?.id;state.selection=new Set([state.selected]);state.pan={x:0,y:0};state.zoom=1;state.source=false;runSimulation();persist();render();toast('Commit opened in a model tab');}catch(e){toast('Could not open commit: '+e.message);}}
 function undo(redo=false){const t=active(),from=redo?t.redo:t.undo,to=redo?t.undo:t.redo;if(!from.length)return;to.push(clone(t.model));t.model=from.pop();t.dirty=true;persist();runSimulation();render();}
 function copyNodes(compareId){const m=compareId?state.tabs[state.compare].model:model(),ids=compareId?new Set([compareId]):state.selection;const nodes=m.nodes.filter(n=>ids.has(n.id));if(!nodes.length)return;state.clipboard={nodes:clone(nodes),edges:clone(m.edges.filter(e=>ids.has(e.from)&&ids.has(e.to)))};toast(`${nodes.length} block${nodes.length>1?'s':''} copied · paste into any model tab`);}
 function paste(){if(!state.clipboard)return toast('Select a block and copy it first');edit(m=>{const map=new Map();const nodes=state.clipboard.nodes.map(n=>{const next=clone(n),id='n'+crypto.randomUUID().slice(0,8);map.set(n.id,id);return {...next,id,x:next.x+35,y:next.y+35};});for(const n of nodes)if(n.source)n.source=map.has(n.source.id)?{...n.source,id:map.get(n.source.id)}:m.nodes.some(s=>s.id===n.source.id)?n.source:null;m.nodes.push(...nodes);m.edges.push(...state.clipboard.edges.map(e=>({...e,from:map.get(e.from),to:map.get(e.to)})));state.selection=new Set(nodes.map(n=>n.id));state.selected=nodes[0]?.id;});toast('Pasted into '+model().name);}
@@ -188,7 +193,7 @@ const actions={
  m.name=$('#new-name').value.trim()||(template==='hydrogen'?m.name:'Untitled exploration');m.branch='model-'+Date.now().toString(36);if(template==='empty'){m.nodes=[];m.edges=[];}if(template==='normal'){m.nodes=m.nodes.filter(n=>['random','logistic','inputTap','outputTap'].includes(n.id));m.edges=m.edges.filter(e=>e.from==='random');m.nodes.find(n=>n.id==='random').op='normal';m.nodes.find(n=>n.id==='random').name='Normal';m.nodes.find(n=>n.id==='random').symbol='N';m.nodes.find(n=>n.id==='logistic').op='custom';m.nodes.find(n=>n.id==='logistic').name='Custom function';m.nodes.find(n=>n.id==='logistic').params.expression='x^2';m.iterations=1;}await repo.newBranch(m.branch,active().base);state.tabs.push({model:m,base:active().base,dirty:true,undo:[],redo:[]});state.active=state.tabs.length-1;state.selected=m.nodes[0]?.id;state.selection=new Set(state.selected?[state.selected]:[]);await refreshRepository();closeModal();runSimulation();persist();render();},
  newbranch(){modal('Branch your exploration','<p>Create a branch from the active model’s commit. Your current edits come with you.</p><div class="field"><label class="field-label" for="branch-name">Branch name</label><input class="field-input mono" id="branch-name" placeholder="experiment/new-idea" maxlength="70"></div>',button('branchsubmit','Create branch','git-branch','btn green'));},
  async branchsubmit(){try{const name=$('#branch-name').value.trim();await repo.newBranch(name,active().base);edit(m=>m.branch=name);await refreshRepository();closeModal();render();toast('Switched to branch '+name);}catch(e){toast(e.message);}},
- projects(){modal('Your open models',`<p>Each tab keeps its own working state and undo history.</p>${state.tabs.map((t,i)=>`<button class="export-option" data-open-tab="${i}"><span>${esc(t.model.name)}<small>${esc(t.model.branch)} · ${t.dirty?'uncommitted changes':t.base.slice(0,7)}</small></span>${icon('arrow-up-right')}</button>`).join('')}${JSON.parse(localStorage.getItem('chaos-lab-drafts-v1')||'[]').map((t,i)=>`<button class="export-option" data-restore-draft="${i}"><span>${esc(t.model.name)}<small>Closed draft · uncommitted changes</small></span>${icon('rotate-ccw')}</button>`).join('')}`,button('new','New model','plus','btn green'));},
+ projects(){modal('Your open models',`<p>Each tab keeps its own working state and undo history.</p>${state.tabs.map((t,i)=>`<button class="export-option" data-open-tab="${i}"><span>${esc(t.model.name)}<small>${esc(t.model.branch)} · ${t.dirty?'uncommitted changes':t.base.slice(0,7)}</small></span>${icon('arrow-up-right')}</button>`).join('')}${JSON.parse(localStorage.getItem(('chaos-lab-drafts-v1'+repo.libraryKey))||'[]').map((t,i)=>`<button class="export-option" data-restore-draft="${i}"><span>${esc(t.model.name)}<small>Closed draft · uncommitted changes</small></span>${icon('rotate-ccw')}</button>`).join('')}`,button('new','New model','plus','btn green'));},
  experiments(){modal('The experiment notebook','<p>Open a saved starting point, then make it your own.</p><div class="note-card">The logistic map demonstrates how a simple deterministic rule creates complex behavior. Try r = 3.2 for a stable cycle, 3.55 for period doubling, and 3.9 for chaos.</div>'+state.history.filter(c=>c.branch!=='main').map(c=>`<button class="export-option" data-open-commit="${c.oid}"><span>${esc(c.commit.message.split('\n')[0])}<small>${esc(c.branch)} · ${c.oid.slice(0,7)}</small></span>${icon('arrow-up-right')}</button>`).join(''),button('new','New experiment','plus','btn green'));},
  settings(){modal('Visualization settings','<p>The graph computes symbolic laws. Draw count and seed affect only final-law visualization samples.</p><div class="settings-grid"><div class="field"><label class="field-label">Final-law plot draws</label><select class="field-input" id="settings-samples">'+[1000,5000,10000,25000,50000].map(n=>`<option value="${n}" ${model().samples===n?'selected':''}>${n.toLocaleString()}</option>`).join('')+'</select></div><div class="field"><label class="field-label">Iterations</label><input class="field-input mono" id="settings-iterations" type="number" min="1" max="100" value="'+model().iterations+'"></div></div><div class="field"><label class="field-label">Visualization seed</label><input class="field-input mono" id="settings-seed" type="number" value="'+model().seed+'"></div><div class="note-card">Density bars evaluate final CDF bin masses directly. Plot draws are generated from the completed render CDF. Feedback preserves source identity through each Unit delay. Integration uses a zero integration constant.</div>',button('settingssubmit','Apply & run','play','btn green'));},
  settingssubmit(){const samples=+$('#settings-samples').value,iterations=Math.min(100,Math.max(1,+$('#settings-iterations').value||1)),seed=+$('#settings-seed').value||42;edit(m=>{m.samples=samples;m.iterations=iterations;m.seed=seed;});closeModal();toast('Visualization settings updated');},
@@ -203,9 +208,9 @@ document.addEventListener('click',async e=>{
  if(performance.now()<(state.ignoreCanvasClickUntil||0)&&state.ignoreCanvasClickPoint&&Math.hypot(e.clientX-state.ignoreCanvasClickPoint.x,e.clientY-state.ignoreCanvasClickPoint.y)<5&&e.target.closest('#canvas'))return;
  const action=e.target.closest('[data-action]');if(action){const fn=actions[action.dataset.action];if(fn)try{await fn(action);}catch(err){toast(err.message);}return;}
  if(e.target.classList.contains('modal-overlay'))return closeModal();
- const close=e.target.closest('[data-close-tab]');if(close){const i=+close.dataset.closeTab;if(state.tabs[i].dirty){const archive=JSON.parse(localStorage.getItem('chaos-lab-drafts-v1')||'[]');archive.push(state.tabs[i]);localStorage.setItem('chaos-lab-drafts-v1',JSON.stringify(archive.slice(-20)));toast('Uncommitted model retained in drafts');}state.tabs.splice(i,1);state.active=Math.min(state.active,state.tabs.length-1);switchTab(state.active);return;}
+ const close=e.target.closest('[data-close-tab]');if(close){const i=+close.dataset.closeTab;if(state.tabs[i].dirty){const archive=JSON.parse(localStorage.getItem(('chaos-lab-drafts-v1'+repo.libraryKey))||'[]');archive.push(state.tabs[i]);localStorage.setItem(('chaos-lab-drafts-v1'+repo.libraryKey),JSON.stringify(archive.slice(-20)));toast('Uncommitted model retained in drafts');}state.tabs.splice(i,1);state.active=Math.min(state.active,state.tabs.length-1);switchTab(state.active);return;}
  const tab=e.target.closest('[data-tab]');if(tab)return switchTab(+tab.dataset.tab);
- const draft=e.target.closest('[data-restore-draft]');if(draft){const drafts=JSON.parse(localStorage.getItem('chaos-lab-drafts-v1')||'[]'),t=drafts.splice(+draft.dataset.restoreDraft,1)[0];localStorage.setItem('chaos-lab-drafts-v1',JSON.stringify(drafts));state.tabs.push({...t,undo:[],redo:[]});closeModal();switchTab(state.tabs.length-1);return;}
+ const draft=e.target.closest('[data-restore-draft]');if(draft){const drafts=JSON.parse(localStorage.getItem(('chaos-lab-drafts-v1'+repo.libraryKey))||'[]'),t=drafts.splice(+draft.dataset.restoreDraft,1)[0];localStorage.setItem(('chaos-lab-drafts-v1'+repo.libraryKey),JSON.stringify(drafts));state.tabs.push({...t,undo:[],redo:[]});closeModal();switchTab(state.tabs.length-1);return;}
  const open=e.target.closest('[data-open-tab]');if(open){closeModal();return switchTab(+open.dataset.openTab);}
  const commit=e.target.closest('[data-open-commit]');if(commit){closeModal();return openCommit(commit.dataset.openCommit);}
  const category=e.target.closest('[data-category]');if(category){const g=category.dataset.category;state.closed.has(g)?state.closed.delete(g):state.closed.add(g);$('#categories').innerHTML=libraryHTML();refreshIcons();return;}
@@ -243,7 +248,7 @@ document.addEventListener('pointerdown',e=>{
 });
 document.addEventListener('wheel',e=>{if(!e.target.closest('#canvas')||e.target.closest('.source-view,.split-container'))return;e.preventDefault();if(e.ctrlKey||e.metaKey){state.zoom=Math.max(.35,Math.min(1.8,state.zoom-e.deltaY*.002));}else{state.pan.x-=e.deltaX;state.pan.y-=e.deltaY;}$('#plane').style.transform=`translate(${state.pan.x}px,${state.pan.y}px) scale(${canvasScale()*state.zoom})`;$('.zoom-label').textContent=Math.round(state.zoom*100)+'%';},{passive:false});
 window.addEventListener('resize',()=>{if(state.tabs.length)render();});
-async function boot(){try{const main=await repo.initRepository();await refreshRepository();let stored;try{stored=JSON.parse(localStorage.getItem('chaos-lab-tabs-v1'));}catch{}if(stored?.tabs?.length){state.tabs=stored.tabs.map(t=>({...t,undo:[],redo:[]}));state.active=Math.min(stored.active||0,state.tabs.length-1);}else{const m=await repo.readModel(main),branch=await repo.head('edge-of-chaos'),experiment=await repo.readModel(branch);state.tabs=[{model:m,base:main,dirty:false,undo:[],redo:[]},{model:experiment,base:branch,dirty:false,undo:[],redo:[]}];}runSimulation();render();window.chaosLab={getState:()=>state,repo,compileModel,createDistributionRenderer};}catch(e){$('#app').innerHTML=`<div class="boot"><div class="boot-logo">∿</div><strong>Could not open the local repository.</strong><span>${esc(e.message)}</span><p>Enable browser storage and reload to start your workspace.</p><button class="btn outline" onclick="location.reload()">Try again</button></div>`;console.error(e);}}
+async function boot(){try{const main=await repo.initRepository();await refreshRepository();let stored;try{stored=JSON.parse(localStorage.getItem(('chaos-lab-tabs-v1'+repo.libraryKey)));}catch{}if(stored?.tabs?.length){state.tabs=stored.tabs.map(t=>({...t,undo:[],redo:[]}));state.active=Math.min(stored.active||0,state.tabs.length-1);}else if(repo.libraryKey){const m=await repo.readModel(main);state.tabs=[{model:m,base:main,dirty:false,undo:[],redo:[]}];state.selected=m.nodes[0]?.id;state.selection=new Set([state.selected]);}else{const m=await repo.readModel(main),branch=await repo.head('edge-of-chaos'),experiment=await repo.readModel(branch);state.tabs=[{model:m,base:main,dirty:false,undo:[],redo:[]},{model:experiment,base:branch,dirty:false,undo:[],redo:[]}];}runSimulation();render();window.chaosLab={getState:()=>state,repo,compileModel,createDistributionRenderer};}catch(e){$('#app').innerHTML=`<div class="boot"><div class="boot-logo">∿</div><strong>Could not open the local repository.</strong><span>${esc(e.message)}</span><p>Enable browser storage and reload to start your workspace.</p><button class="btn outline" onclick="location.reload()">Try again</button></div>`;console.error(e);}}
 function customPortInspector(n){const ports=safeInputPorts(n);return `<div class="custom-ports-inspector"><h4>Input ports <span class="small-badge">${ports.length}</span></h4><p class="field-help">${n.portMode==='manual'?'Manual input list':'Inferred from the expression'}. Names are function arguments. Defaults are constants used when no wire is attached.</p><div class="custom-port-fields">${ports.map((p,i)=>`<div class="custom-port-field"><input aria-label="Input ${i+1} name" data-custom-port-index="${i}" data-custom-port-field="name" value="${esc(p.name)}" title="Variable name in the expression"><input aria-label="Default for ${esc(p.name)}" data-custom-port-index="${i}" data-custom-port-field="default" value="${esc(p.default)}" title="Default constant for unconnected ${esc(p.name)}">${button('removeinput','Remove input','x','icon-btn',`data-port-index="${i}"`)}</div>`).join('')}</div><div class="port-actions">${button('addinput','Add input','plus','btn soft')}${button('syncinputs','Infer from expression','refresh-cw','btn outline')}</div></div>`;}
 function wireInspectorHTML(){const edge=model().edges[state.selectedEdge],from=model().nodes.find(n=>n.id===edge.from),to=model().nodes.find(n=>n.id===edge.to);return `<div class="inspector-heading">Connection inspector${button('clearwire','Deselect connection','x')}</div><div class="inspector-section"><h4>Signal path</h4><p class="wire-description"><b>${esc(from?.name)}</b><br>result → <b>${esc(to?.name)}.${esc(edge.port)}</b></p><p class="field-help">This wire carries the same symbolic random variable. It does not create an independent draw.</p></div><div class="inspector-section"><h4>Edit connection</h4><p class="field-help">Drag the line to change its route. Drag either round endpoint handle to reconnect it to another port. Drop on empty canvas to cancel.</p><div class="port-actions">${button('resetwire','Reset route','rotate-ccw','btn outline')}${button('delete','Disconnect','unplug','btn outline')}</div></div>`;}
 function connectPorts(from,to,port,rewireIndex=null){const a=model().nodes.find(n=>n.id===from),b=model().nodes.find(n=>n.id===to);if(!a||!b)return false;if(from===to&&a.type!=='delay'){toast('Use a Unit delay for a feedback loop.');return false;}

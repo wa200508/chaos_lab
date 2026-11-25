@@ -31,7 +31,7 @@ function color(value) {
 }
 const palette = Array.from({length:256}, (_,i)=>color(i/255));
 
-export function drawOrbital(canvas, {rate, points, extent, view}) {
+export function drawOrbital(canvas, {rate, points, extent, view, density}) {
   const size = canvas.width, center = size / 2, scale = center / extent;
   const ctx = canvas.getContext('2d');
   const counts = new Float32Array(size * size);
@@ -50,12 +50,16 @@ export function drawOrbital(canvas, {rate, points, extent, view}) {
       }
     }
   }
+  if(view==='slice' && density) {
+    for(let row=0;row<size;row++) for(let col=0;col<size;col++)
+      counts[row*size+col]=density((col+.5-center)/scale,(center-row-.5)/scale);
+  }
   let peak = 0;
   for (const value of counts) peak=Math.max(peak,value);
   const image = ctx.createImageData(size,size);
   for (let row=0;row<size;row++) for (let col=0;col<size;col++) {
     const i=row*size+col;
-    const fraction = view==='slice'
+    const fraction = view==='slice' && !density
       ? Math.exp(-rate*Math.hypot((col+.5-center)/scale,(row+.5-center)/scale))
       : counts[i]/(peak || 1);
     const rgb=palette[Math.round(255*Math.sqrt(fraction))];

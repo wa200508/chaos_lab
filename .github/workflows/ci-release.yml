@@ -65,7 +65,9 @@ jobs:
       - run: julia --project=export-environments/julia .export-test/hydrogen.jl --output .export-test/hydrogen-cloud.png
         env:
           GKSwstype: '100'
-
+      - run: julia --project=export-environments/julia .export-test/meridian.jl --output .export-test/meridian.png
+        env:
+          GKSwstype: '100'
 
   native-packages:
     needs: [verify, julia-export]

@@ -1,10 +1,12 @@
 import git from 'isomorphic-git';
 import LightningFS from '@isomorphic-git/lightning-fs';
 import {clone,defaultModel,toSysML,compileModel,exportSymbolicGraph,ENGINE_VERSION} from './engine.js';
-const fs=new LightningFS('chaos-lab-git-v2'),pfs=fs.promises,dir='/models',author={name:'You',email:'explorer@chaos.local'};
+export const libraryKey=new URLSearchParams(globalThis.location?.search||'').get('library')||'';
+const fs=new LightningFS(libraryKey?'chaos-models-'+libraryKey:'chaos-lab-git-v2'),pfs=fs.promises,dir='/models',author={name:'You',email:'explorer@chaos.local'};
 const safeName=n=>n.replace(/[^a-zA-Z0-9_-]/g,'_');
 export async function branches(){return git.listBranches({fs,dir});}
 export async function commitModel(model,branch=model.branch||'main',message=model.name){
+ if(libraryKey)await git.checkout({fs,dir,ref:branch,force:true});
  await git.writeRef({fs,dir,ref:'HEAD',value:'refs/heads/'+branch,force:true,symbolic:true});
  const stored={...model,engine:ENGINE_VERSION};
  await pfs.writeFile(dir+'/model.json',JSON.stringify(stored,null,2),'utf8');
@@ -13,7 +15,36 @@ export async function commitModel(model,branch=model.branch||'main',message=mode
  await git.add({fs,dir,filepath:'model.json'});await git.add({fs,dir,filepath:'model.sysml'});
  return git.commit({fs,dir,ref:'refs/heads/'+branch,author,message:message+`\n\nModel: ${model.name}\nBlocks: ${model.nodes.length}\nEngine: ${ENGINE_VERSION}\nVisualization draws: ${model.samples}\nVisualization seed: ${model.seed}\nFormat: SysML 2.0 + graph JSON`});
 }
+// Import the original Git objects so commit IDs and ancestry match the checkout.
+async function loadLibrary() {
+ const response=await fetch('/model-library.json',{cache:'no-store'});
+ if(!response.ok)throw Error('The model repository launcher is required.');
+ const {refs,pack}=await response.json();
+ if(!refs.main)throw Error('Model repository needs a main branch.');
+ try{await pfs.stat(dir);}catch{await pfs.mkdir(dir);}
+ try{await pfs.stat(dir+'/.git');}catch{await git.init({fs,dir,defaultBranch:'main'});}
+ const bytes=Uint8Array.from(atob(pack),ch=>ch.charCodeAt(0));
+ const hash=Array.from(bytes.slice(-20),n=>n.toString(16).padStart(2,'0')).join('');
+ const filepath='.git/objects/pack/pack-'+hash+'.pack';
+ try{await pfs.stat(dir+'/'+filepath.replace(/pack$/, 'idx'));}catch{
+   await pfs.writeFile(dir+'/'+filepath,bytes);
+   await git.indexPack({fs,dir,filepath});
+ }
+ const local=new Set(await branches());
+ for(const [branch,oid] of Object.entries(refs)){
+   if(!local.has(branch)) await git.branch({fs,dir,ref:branch,object:oid});
+   else {
+     const ancestor=await head(branch);
+     if(ancestor!==oid && await git.isDescendent({fs,dir,oid,ancestor}))
+       await git.writeRef({fs,dir,ref:'refs/heads/'+branch,value:oid,force:true});
+   }
+ }
+ const branch=await git.currentBranch({fs,dir})||'main';
+ await git.checkout({fs,dir,ref:branch,force:true});
+ return head('main');
+}
 export async function initRepository(){
+ if(libraryKey)return loadLibrary();
  try{await pfs.stat(dir+'/.git');}catch{
  await pfs.mkdir(dir);await git.init({fs,dir,defaultBranch:'main'});
  let m=defaultModel();m.nodes.find(n=>n.id==='parameter').params.value=3.4;await commitModel(m,'main','Initial logistic system');

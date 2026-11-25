@@ -248,6 +248,33 @@ function orbital_panels(rate, seed, count)
     end
 end
 
+function meridian_panels(spec, count, seed)
+    r,u=Symbolics.variable(:r),Symbolics.variable(:u)
+    expr=parse_math(spec["expression"],Dict(:r=>r,:u=>u))
+    amp=Symbolics.build_function(expr,r,u;expression=Val{false})
+    extent=Float64(spec["extent"])
+    grid=((1:192).-0.5).*(2extent/192).-extent
+    density=[abs2(amp(hypot(x,z),z/hypot(x,z))) for z in grid,x in grid]
+    weights=[begin
+        rad=(i-.5)*extent/128
+        rad^2*abs2(amp(rad,(j-.5)/64-1))
+    end for j in 1:128,i in 1:256]
+    cumulative=cumsum(vec(weights))
+    rng=MersenneTwister(mod(seed,2^32))
+    image=zeros(192,192)
+    for _ in 1:count
+        index=searchsortedfirst(cumulative,rand(rng)*last(cumulative))-1
+        radius=(div(index,128)+rand(rng))*extent/128
+        cosine=(mod(index,128)+rand(rng))/64-1
+        x=radius*sqrt(1-cosine^2)*cos(2π*rand(rng));z=radius*cosine
+        col=floor(Int,(x/extent+1)*96)+1;row=floor(Int,(z/extent+1)*96)+1
+        if 1<=col<=192 && 1<=row<=192; image[row,col]+=1; end
+    end
+    return [Plots.heatmap(grid,grid,sqrt.(field);title=title,aspect_ratio=:equal,color=:magma,
+                          colorbar=false,xlabel="x (a₀)",ylabel="z (a₀)")
+            for (field,title) in ((density,"Meridian density"),(image,"Projected detections"))]
+end
+
 function plot_visualizations(output=nothing;bins=34,cdf_points=128)
     output!==nothing&&(ENV["GKSwstype"]="100")
     taps=[tap for tap in PAYLOAD["visualizations"] if get(tap,"root",nothing)!==nothing]
@@ -269,6 +296,10 @@ function plot_visualizations(output=nothing;bins=34,cdf_points=128)
         if rate !== nothing
             append!(panels,orbital_panels(rate,mod(get(PAYLOAD["model"],"seed",42),2^32),get(PAYLOAD["model"],"samples",10000)))
         end
+    end
+    for tap in taps
+        spec=get(tap,"meridian",nothing)
+        if spec!==nothing; append!(panels,meridian_panels(spec,PAYLOAD["model"]["samples"],PAYLOAD["model"]["seed"])); end
     end
     rows = length(panels) ÷ 2
     figure=Plots.plot(panels...;layout=(rows,2),size=(1200,330*rows))
