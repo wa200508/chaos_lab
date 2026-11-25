@@ -58,6 +58,7 @@ import ast
 import functools
 import itertools
 import math
+import sys
 from pathlib import Path
 import sympy as sp
 
@@ -363,6 +364,9 @@ def plot_visualizations(output=None,bins=34,cdf_points=128):
 
 
 def main():
+    # Redirected Windows consoles may have a limited character repertoire.
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(errors='backslashreplace')
     parser=argparse.ArgumentParser(description='Exported Chaos Lab symbolic distribution system')
     parser.add_argument('--no-plot',action='store_true');parser.add_argument('--show-symbolic',action='store_true');parser.add_argument('--output',type=Path);parser.add_argument('--bins',type=int,default=34);parser.add_argument('--cdf-points',type=int,default=128);args=parser.parse_args()
     print(PAYLOAD['model']['name']+' | '+PAYLOAD['graph']['engine'])
