@@ -257,10 +257,11 @@ def meridian_panels(axes, spec, count, seed):
     extent=spec['extent']
     grid=(np.arange(192)+.5)*2*extent/192-extent
     x,z=np.meshgrid(grid,grid); radius=np.hypot(x,z)
-    density=abs(amplitude(radius,z/radius))**2
+    density_at=amplitude if spec.get('isDensity') else lambda r,u: abs(amplitude(r,u))**2
+    density=density_at(radius,z/radius)
     rr=(np.arange(256)+.5)*2*extent/256
     uu=(np.arange(128)+.5)*2/128-1
-    mass=rr[:,None]**2*abs(amplitude(rr[:,None],uu[None,:]))**2*np.ones((1,128))
+    mass=rr[:,None]**2*density_at(rr[:,None],uu[None,:])*np.ones((1,128))
     rng=np.random.default_rng(int(seed)%2**32)
     cells=rng.choice(mass.size,count,p=(mass/mass.sum()).ravel())
     radius=(cells//128+rng.random(count))*2*extent/256
@@ -277,10 +278,10 @@ def plot_visualizations(output=None,bins=34,cdf_points=128):
     import matplotlib.pyplot as plt
     from scipy.optimize import brentq
     taps=[tap for tap in PAYLOAD['visualizations'] if tap.get('root')]
-    if not taps: print('No attached visualization nodes.');return
     cloud_rates = [rate for tap in taps if (rate := orbital_rate(tap)) is not None]
-    fields = [t['meridian'] for t in taps if t.get('meridian')]
+    fields = [t['meridian'] for t in PAYLOAD['visualizations'] if t.get('meridian')]
     rows = len(taps) + len(cloud_rates) + len(fields)
+    if not rows: print('No attached visualization nodes.');return
     fig,axes=plt.subplots(rows,2,figsize=(12,3.3*rows),squeeze=False)
     for row,tap in enumerate(taps):
         cdf,bounds,method=numeric_descriptor(tap['root']);lo,hi=bounds
@@ -312,6 +313,7 @@ def main():
     print(PAYLOAD['model']['name']+' | '+PAYLOAD['graph']['engine'])
     print(f'{len(SOURCES)} independent source(s), {len(EQUATIONS)} symbolic relations, {len(PAYLOAD["visualizations"])} visualization node(s).')
     if args.show_symbolic:
+        for node,field in PAYLOAD['graph'].get('quantum',{}).items():print(node,field['equation'],field['derivation'])
         for equation in EQUATIONS:print(equation)
         for tap in PAYLOAD['visualizations']:
             if tap.get('root'):print(tap['name'],symbolic_cdf(tap['root']))

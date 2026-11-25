@@ -30,3 +30,7 @@ for node, point, expected in [('radialTap', 1, 1-5*math.exp(-2)), ('insideTap', 
 meridian_image = root / 'meridian.png'
 subprocess.run([sys.executable, str(root/'meridian.py'), '--output', str(meridian_image)], check=True, timeout=120)
 assert meridian_image.stat().st_size > 10000
+
+operator_image = root/'operator.png'
+subprocess.run([sys.executable,str(root/'hydrogen_operators.py'),'--output',str(operator_image)],check=True,timeout=120)
+assert operator_image.stat().st_size > 10000

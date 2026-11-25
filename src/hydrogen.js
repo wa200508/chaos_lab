@@ -1,33 +1,28 @@
-import {ENGINE_VERSION, makeNode} from './engine.js';
+import {ENGINE_VERSION,makeNode} from './engine.js';
 
-// Coordinates use Bohr radii. The 1s state is isotropic, so integrating its
-// volume density over a shell gives the complete radial measurement law.
-export function hydrogenGroundState() {
-  function block(id, op, name, x, y, params = {}) {
-    const node = makeNode(op, x, y);
-    return {...node, id, name, params: {...node.params, ...params}};
+export function hydrogenState(n=1,ell=0,m=0) {
+  const label=n+('spdfghiklmnoqrtu'[ell]||'(ℓ='+ell+')');
+  function block(id,op,x,y,params={}) {
+    const node=makeNode(op,x,y);
+    return {...node,id,params:{...node.params,...params}};
   }
-  function tap(id, name, target, x, y) {
-    return {...block(id, 'tap', name, x, y), source: {id: target, port: 'out'}};
+  function tap(id,name,source,x,y) {
+    return {...block(id,'tap',x,y),params:{},name,source:{id:source,port:'out'}};
   }
-  return {
-    id: crypto.randomUUID(),
-    name: 'Hydrogen 1s ground state',
-    branch: 'hydrogen-1s',
-    engine: ENGINE_VERSION,
-    iterations: 1, samples: 10000, seed: 42,
-    nodes: [
-      block('radius', 'gamma', 'Electron radius (a₀)', 15, 30, {shape: 3, lambda: 2}),
-      block('inside', 'less', 'Inside probe sphere?', 315, 30),
-      tap('insideTap', 'Inside = 1, outside = 0', 'inside', 550, 30),
-      {...tap('radialTap', 'Radial probability (a₀)', 'radius', 15, 235), orbitalCloud: true},
-      block('probe', 'constant', 'Probe radius (a₀)', 315, 235, {value: 1}),
-      block('psi', 'custom', '1s amplitude (a₀⁻³ᐟ²)', 550, 235, {expression: 'exp(-x)/sqrt(pi)'})
-    ],
-    edges: [
-      {from: 'radius', to: 'inside', port: 'x'},
-      {from: 'probe', to: 'inside', port: 'b'},
-      {from: 'probe', to: 'psi', port: 'x'}
-    ]
-  };
+  const nodes=[
+    block('kinetic','kinetic',0,10),block('potential','coulomb',0,160),
+    block('H','hamiltonian',210,10),block('basis','angularBasis',0,340,{ell,m}),
+    block('radial','radialEigen',420,10,{n}),block('angular','angularEigen',210,340),
+    block('psi','eigenstate',420,340),block('normalized','normalizeState',630,340),block('density','born',630,180),
+    block('energy','eigenenergy',420,175),block('sphere','sphereMass',630,10,{radius:n*n}),
+    {...tap('field','Position density','density',840,250),orbitalCloud:true},
+    tap('insideTap','Enclosed probability','sphere',840,10)
+  ];
+  const links=[['kinetic','H','kinetic'],['potential','H','potential'],['H','radial','H'],['basis','radial','basis'],
+    ['basis','angular','basis'],['radial','psi','R'],['angular','psi','Y'],['psi','normalized','state'],['normalized','density','state'],
+    ['radial','energy','radial'],['density','sphere','density']];
+  return {id:crypto.randomUUID(),name:n===1?'Hydrogen 1s ground state':`Hydrogen ${label} (n=${n}, ℓ=${ell}, m=${m})`,
+    branch:n===1?'hydrogen-1s':`orbital/${label}-m${m}`,engine:ENGINE_VERSION,iterations:1,samples:10000,seed:42,
+    nodes,edges:links.map(([from,to,port])=>({from,to,port}))};
 }
+export const hydrogenGroundState=()=>hydrogenState();

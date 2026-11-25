@@ -2,7 +2,9 @@
 // Sweep the signed meridian amplitude at φ=0 over r and u=cos(θ).
 import nerdamer from 'nerdamer/all.js';
 
-export function meridianSpec(model, tap) {
+export function meridianSpec(model, tap, analysis) {
+  const field=analysis?.quantum?.[tap?.id];
+  if(field?.kind==='born'&&tap.orbitalCloud!==false)return {expression:field.density,isDensity:true,extent:field.extent,view:field.n===1?'cloud':'slice'};
   if (!tap?.meridian || tap.source?.port !== 'out') return null;
   const node = model.nodes.find(n => n.id === tap.source.id);
   const extent = Number(tap.meridian.extent);
@@ -14,7 +16,7 @@ export function meridianData(spec, count, seed) {
   const expr = nerdamer(spec.expression);
   if (expr.variables().some(name => !['r','u'].includes(name))) throw Error('Meridian amplitude uses r and u = cos(θ).');
   const evaluate = expr.buildFunction(['r','u']);
-  const density = (r,u) => evaluate(r,u)**2;
+  const density = spec.isDensity ? evaluate : (r,u) => evaluate(r,u)**2;
   const nr=256, nu=128, limit=2*spec.extent;
   const weights=new Float64Array(nr*nu);
   let sum=0;
@@ -36,7 +38,7 @@ export function meridianData(spec, count, seed) {
     const angle=random()*2*Math.PI, transverse=r*Math.sqrt(1-u*u);
     return [transverse*Math.cos(angle),r*u,transverse*Math.sin(angle)];
   });
-  return {points,extent:spec.extent,view:'slice',density:(x,z)=>{
+  return {points,extent:spec.extent,view:spec.view||'slice',density:(x,z)=>{
     const r=Math.hypot(x,z);
     return density(r,r?z/r:1);
   }};

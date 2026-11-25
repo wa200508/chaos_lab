@@ -1,4 +1,5 @@
-import {hydrogenGroundState} from '../src/hydrogen.js';
+import {hydrogenState} from '../src/hydrogen.js';
+import legacyHydrogen from '../tests/fixtures/hydrogen-legacy.json' with {type:'json'};
 import {mkdir,writeFile} from 'node:fs/promises';
 import {makeNode,defaultModel} from '../src/engine.js';
 import {generateScript} from '../src/exporters/index.js';
@@ -11,4 +12,4 @@ const field=makeNode('tap');
 field.source={id:amplitude.id,port:'out'};
 field.meridian={extent:8};
 const meridian={name:'Hydrogen 2p',nodes:[amplitude,field],edges:[],iterations:1,samples:1000,seed:42};
-for(const [name,model] of [['meridian',meridian],['hydrogen',hydrogenGroundState()],['square',fixture('square')],['difference',fixture('difference')],['logistic',defaultModel()],['twelve',twelve]])for(const [language,extension]of [['python','py'],['julia','jl']])await writeFile(`${out}/${name}.${extension}`,generateScript(model,language));
+for(const [name,model] of [['meridian',meridian],['hydrogen',legacyHydrogen],['hydrogen_operators',hydrogenState(3,2,1)],['square',fixture('square')],['difference',fixture('difference')],['logistic',defaultModel()],['twelve',twelve]])for(const [language,extension]of [['python','py'],['julia','jl']])await writeFile(`${out}/${name}.${extension}`,generateScript(model,language));

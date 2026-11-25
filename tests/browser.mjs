@@ -82,7 +82,7 @@ try{
  await page.locator('[data-action="saveorbital"]').click();
  assert.equal((await download).suggestedFilename(),'orbital-slice.png');
  await page.locator('[data-action="closemodal"]').click();
- await page.locator('[data-node="radialTap"] .node-title').click();
+ await page.locator('[data-node="field"] .node-title').click();
  await page.locator('#enable-orbital').uncheck();
  assert.equal(await page.locator('.orbital-preview').count(),0);
  await page.locator('#enable-orbital').check();

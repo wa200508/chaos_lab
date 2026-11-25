@@ -69,6 +69,10 @@ jobs:
         env:
           GKSwstype: '100'
 
+      - run: julia --project=export-environments/julia .export-test/hydrogen_operators.jl --output .export-test/operator.png
+        env:
+          GKSwstype: '100'
+
   native-packages:
     needs: [verify, julia-export]
     if: github.event_name != 'pull_request'

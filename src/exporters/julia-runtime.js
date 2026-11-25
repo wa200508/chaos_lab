@@ -254,10 +254,11 @@ function meridian_panels(spec, count, seed)
     amp=Symbolics.build_function(expr,r,u;expression=Val{false})
     extent=Float64(spec["extent"])
     grid=((1:192).-0.5).*(2extent/192).-extent
-    density=[abs2(amp(hypot(x,z),z/hypot(x,z))) for z in grid,x in grid]
+    density_at(r,u)=get(spec,"isDensity",false) ? amp(r,u) : abs2(amp(r,u))
+    density=[density_at(hypot(x,z),z/hypot(x,z)) for z in grid,x in grid]
     weights=[begin
         rad=(i-.5)*extent/128
-        rad^2*abs2(amp(rad,(j-.5)/64-1))
+        rad^2*density_at(rad,(j-.5)/64-1)
     end for j in 1:128,i in 1:256]
     cumulative=cumsum(vec(weights))
     rng=MersenneTwister(mod(seed,2^32))
@@ -278,7 +279,6 @@ end
 function plot_visualizations(output=nothing;bins=34,cdf_points=128)
     output!==nothing&&(ENV["GKSwstype"]="100")
     taps=[tap for tap in PAYLOAD["visualizations"] if get(tap,"root",nothing)!==nothing]
-    isempty(taps)&&return println("No attached visualization nodes")
     panels=Any[]
     for tap in taps
         d=numeric_descriptor(tap["root"]);lo,hi=d.bounds
@@ -297,10 +297,11 @@ function plot_visualizations(output=nothing;bins=34,cdf_points=128)
             append!(panels,orbital_panels(rate,mod(get(PAYLOAD["model"],"seed",42),2^32),get(PAYLOAD["model"],"samples",10000)))
         end
     end
-    for tap in taps
+    for tap in PAYLOAD["visualizations"]
         spec=get(tap,"meridian",nothing)
         if spec!==nothing; append!(panels,meridian_panels(spec,PAYLOAD["model"]["samples"],PAYLOAD["model"]["seed"])); end
     end
+    isempty(panels)&&return println("No attached visualization nodes")
     rows = length(panels) ÷ 2
     figure=Plots.plot(panels...;layout=(rows,2),size=(1200,330*rows))
     output===nothing ? display(figure) : Plots.savefig(figure,output)
@@ -310,6 +311,7 @@ function main()
     println(PAYLOAD["model"]["name"]," | ",PAYLOAD["graph"]["engine"])
     println(length(SOURCES)," independent source(s), ",length(EQUATIONS)," symbolic relations, ",length(PAYLOAD["visualizations"])," visualization node(s).")
     if "--show-symbolic" in ARGS
+        for (node,field) in get(PAYLOAD["graph"],"quantum",Dict()); println(node," ",field["equation"]," ",field["derivation"]); end
         foreach(println,EQUATIONS);foreach(tap->get(tap,"root",nothing)===nothing||println(tap["name"],": ",symbolic_cdf(tap["root"])),PAYLOAD["visualizations"])
     end
     if !("--no-plot" in ARGS)

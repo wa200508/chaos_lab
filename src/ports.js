@@ -1,3 +1,4 @@
+import {quantumOps} from './quantum.js';
 import nerdamer from 'nerdamer/all.js';
 const reserved=new Set(['pi','e','E','sin','cos','tan','tanh','exp','log','sqrt','abs','factorial','gamma']);
 export function validatePortName(name){if(!/^[A-Za-z][A-Za-z0-9_]*$/.test(name)||reserved.has(name))throw Error('Use a unique variable name such as x, temperature, or input12. Function names and mathematical constants are reserved.');return name;}
@@ -10,6 +11,7 @@ export function customInputPorts(node){
  return names.map(name=>{validatePortName(name);if(seen.has(name))throw Error('Each input port needs a unique name.');seen.add(name);const old=previous.find(p=>(typeof p==='string'?p:p.name)===name);return {name,label:typeof old==='object'&&old.label?old.label:name,default:typeof old==='object'&&old.default!==undefined?String(old.default):fallback(node,name),description:`Input variable ${name}. Its wire carries a symbolic random variable; the default is used when unconnected.`};});
 }
 export function inputPorts(node){
+ if(quantumOps[node.op])return Object.entries(quantumOps[node.op].inputs).map(([name,kind])=>({name,label:name,description:'Required '+quantumOps[kind].name+' output.',default:'required'}));
  if(node.op==='custom')return customInputPorts(node);
  const make=(name,label,description)=>({name,label,description,default:fallback(node,name)});
  if(['random','parameter','tap'].includes(node.type))return [];

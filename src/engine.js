@@ -1,4 +1,5 @@
 import nerdamer from 'nerdamer/all.js';
+import {quantumOps,applyQuantum} from './quantum.js';
 import {inputPorts} from './ports.js';
 import {createLawFactory, ENGINE_VERSION} from './laws.js';
 export {ENGINE_VERSION, exportSymbolicGraph} from './laws.js';
@@ -11,8 +12,8 @@ export const CATALOG = [
  ['Combinatorics','Factorial','combinatorics','n!','factorial'],['Combinatorics','Combination','combinatorics','nCr','combination'],['Combinatorics','Permutation','combinatorics','nPr','permutation'],
  ['Logic','Greater than','logic','>','greater'],['Logic','Less than','logic','<','less'],['Logic','Equal','logic','=','equal'],['Logic','AND','logic','∧','and'],['Logic','OR','logic','∨','or'],['Logic','NOT','logic','¬','not'],['Logic','Switch','logic','⇄','switch'],
  ['Dynamics','Unit delay','delay','z⁻¹','delay'],['Dynamics','Distribution tap','tap','▥','tap']
-].map(([category,name,type,symbol,op])=>({category,name,type,symbol,op}));
-export function makeNode(op,x=100,y=100) { const c=CATALOG.find(c=>c.op===op);return {id:'n'+crypto.randomUUID().slice(0,8),...c,x,y,params:{...(op==='gamma'?{shape:3}:{}),value:op==='constant'?3.9:1,min:0,max:1,mean:0,sigma:1,lambda:1,p:0.5,r:op==='tent'?1.99:3.9,expression:op==='logistic'?'r*x*(1-x)':'x^2',a:2,b:2,steps:12,variable:'x'},source:null}; }
+].map(([category,name,type,symbol,op])=>({category,name,type,symbol,op})).concat(Object.values(quantumOps));
+export function makeNode(op,x=100,y=100) { const c=CATALOG.find(c=>c.op===op);if(quantumOps[op]){const {inputs,formula,params,...definition}=c;return {id:'n'+crypto.randomUUID().slice(0,8),...definition,x,y,params:{...params},source:null};}return {id:'n'+crypto.randomUUID().slice(0,8),...c,x,y,params:{...(op==='gamma'?{shape:3}:{}),value:op==='constant'?3.9:1,min:0,max:1,mean:0,sigma:1,lambda:1,p:0.5,r:op==='tent'?1.99:3.9,expression:op==='logistic'?'r*x*(1-x)':'x^2',a:2,b:2,steps:12,variable:'x'},source:null}; }
 export function defaultModel(variant='logistic') {
  const nodes=[makeNode('uniform',46,141),makeNode('constant',303,24),makeNode('logistic',303,141),makeNode('delay',594,141),makeNode('tap',46,304),makeNode('tap',367,304)];
  nodes.forEach((n,i)=>n.id=['random','parameter','logistic','delay','inputTap','outputTap'][i]);nodes[1].name='Growth rate';nodes[1].params.value=3.9;nodes[2].name='Logistic map';nodes[4].name='Input distribution';nodes[4].source={id:'random',port:'out'};nodes[5].name='Output distribution';nodes[5].source={id:'logistic',port:'out'};
@@ -24,7 +25,7 @@ export function histogram(a,bins=34){const s=stats(a),range=(s.max-s.min)||1,cou
 // Compilation produces exact symbolic random-variable expressions and probability
 // measures. Rendering and optional draws from final laws live in visualization.js.
 export function compileModel(model) {
- const factory=createLawFactory(),outputs={},errors=[],nodes=model.nodes.filter(n=>n.type!=='tap');
+ const factory=createLawFactory(),outputs={},quantum={},errors=[],nodes=model.nodes.filter(n=>n.type!=='tap');
  const incoming=id=>model.edges.filter(e=>e.to===id),constant=factory.constant,delays=new Map(),sums=new Map();
  const stateEdge=(node,edge)=>edge.port==='feedback'&&!(node.op==='custom'&&inputPorts(node).some(p=>p.name==='feedback'));
  const activeEdges=node=>{const edges=incoming(node.id);if(node.op!=='custom')return edges;const used=new Set(nerdamer(node.params.expression).variables());return edges.filter(edge=>used.has(edge.port)||stateEdge(node,edge));};
@@ -74,7 +75,17 @@ export function compileModel(model) {
      try{
        const get=(port,fallback)=>{const edge=ordinary.find(e=>e.port===port);return edge?outputs[edge.from]:constant(fallback);};
        const feedback=edges.find(e=>stateEdge(node,e));if(feedback&&!delays.has(feedback.from))throw Error('Feedback must pass through a Unit delay.');
-       outputs[node.id]=expressionFor(node,get,step,feedback?outputs[feedback.from]:null);done.add(node.id);
+       if(node.type==='quantum'){
+         const inputs=Object.fromEntries(ordinary.map(e=>[e.port,quantum[e.from]]));
+         const field=applyQuantum(node,inputs);
+         field.inputs=Object.fromEntries(ordinary.map(e=>[e.port,e.from]));
+         quantum[node.id]=field;
+         if(field.scalar!==undefined)outputs[node.id]=constant(field.scalar);
+       }else{
+         if(ordinary.some(e=>quantum[e.from]&&!outputs[e.from]))throw Error('This port requires a scalar. Connect a quantum measurement first.');
+         outputs[node.id]=expressionFor(node,get,step,feedback?outputs[feedback.from]:null);
+       }
+       done.add(node.id);
      }catch(error){if(step===0)errors.push(`${node.name}: ${error.message}`);delete outputs[node.id];}
      pending.splice(j,1);
    }
@@ -85,15 +96,15 @@ export function compileModel(model) {
    const source=node.source;
    if(source?.port==='in'){
      const name=source.inputPort||'x',edge=model.edges.find(e=>e.to===source.id&&e.port===name);
-     if(edge)outputs[node.id]=outputs[edge.from];else{const target=nodes.find(n=>n.id===source.id),port=target&&inputPorts(target).find(p=>p.name===name);if(port)outputs[node.id]=constant(port.default);}
-   }else if(source&&outputs[source.id])outputs[node.id]=outputs[source.id];
+     if(edge){outputs[node.id]=outputs[edge.from];if(quantum[edge.from])quantum[node.id]=quantum[edge.from];}else{const target=nodes.find(n=>n.id===source.id),port=target&&inputPorts(target).find(p=>p.name===name);if(port&&target.type!=='quantum')outputs[node.id]=constant(port.default);}
+   }else if(source){outputs[node.id]=outputs[source.id];if(quantum[source.id])quantum[node.id]=quantum[source.id];}
  }catch(error){errors.push(`${node.name}: ${error.message}`);}
  const laws=Object.fromEntries(Object.entries(outputs).filter(([,term])=>term).map(([id,term])=>[id,factory.law(term)]));
- return {engine:ENGINE_VERSION,laws,terms:factory.terms,errors,iterations};
+ return {engine:ENGINE_VERSION,laws,quantum,terms:factory.terms,errors,iterations};
 }
 // Backwards-compatible name; this now compiles laws and never generates samples.
 export const simulate=compileModel;
-export function toSysML(model){const id=s=>String(s).replace(/[^a-zA-Z0-9_]/g,'_'),doc=s=>String(s).replaceAll('*/','* /');let source=`package ${id(model.name)} {\n    private import ScalarValues::*;\n    doc /* Engine: ${ENGINE_VERSION}. Ports denote symbolic random variables; numerical evaluation occurs only at visualization taps. */\n\n    port def Signal {\n        out item value : Real;\n    }\n\n    part def Block {\n        port output : Signal;\n    }\n\n    part model {\n        attribute visualizationDrawCount : Integer = ${model.samples};\n        attribute iterations : Integer = ${model.iterations};\n        attribute visualizationSeed : Integer = ${model.seed};\n`;
- for(const n of model.nodes){let ports;try{ports=inputPorts(n);}catch{ports=(n.inputPorts||[]).map(p=>typeof p==='string'?{name:p}:p);}const portNames=new Set([...ports.map(p=>p.name),...model.edges.filter(e=>e.to===n.id).map(e=>e.port)]);source+=`\n        part ${id(n.id)} : Block {\n            doc /* ${doc(n.name)} | ${doc(n.op)} */\n`;for(const [k,v]of Object.entries(n.params)){if(typeof v==='number')source+=`            attribute ${portNames.has(k)?'default_':''}${id(k)} : Real = ${v};\n`;}for(const name of portNames){const port=ports.find(p=>p.name===name);source+=`            port ${id(name)} : ~Signal;\n`;if(port)source+=`            doc /* ${id(name)}: ${doc(port.description||port.label||name)} Default: ${doc(port.default??'0')}. */\n`;}if(['function','calculus'].includes(n.type))source+=`            doc /* expression: ${doc(n.params.expression)} */\n`;if(n.source)source+=`            doc /* Visualization observes ${doc(n.source.id)}.${doc(n.source.port==='in'?n.source.inputPort||'x':'output')}. */\n`;source+='        }\n';}
+export function toSysML(model){const id=s=>String(s).replace(/[^a-zA-Z0-9_]/g,'_'),doc=s=>String(s).replaceAll('*/','* /');let source=`package ${id(model.name)} {\n    private import ScalarValues::*;\n    doc /* Engine: ${ENGINE_VERSION}. Ports denote symbolic random variables; numerical evaluation occurs only at visualization taps. */\n\n    port def Signal {\n        out item value : Real;\n    }\n\n    part def Block {\n        port output : Signal;\n    }\n\n    item def QuantumValue;\n    port def QuantumSignal { out item value : QuantumValue; }\n    part def QuantumBlock { port output : QuantumSignal; }\n\n    part model {\n        attribute visualizationDrawCount : Integer = ${model.samples};\n        attribute iterations : Integer = ${model.iterations};\n        attribute visualizationSeed : Integer = ${model.seed};\n`;
+ for(const n of model.nodes){let ports;try{ports=inputPorts(n);}catch{ports=(n.inputPorts||[]).map(p=>typeof p==='string'?{name:p}:p);}const portNames=new Set([...ports.map(p=>p.name),...model.edges.filter(e=>e.to===n.id).map(e=>e.port)]);source+=`\n        part ${id(n.id)} : ${n.type==='quantum'&&!['sphereMass','eigenenergy'].includes(n.op)?'QuantumBlock':'Block'} {\n            doc /* ${doc(n.name)} | ${doc(n.op)} */\n`;for(const [k,v]of Object.entries(n.params)){if(typeof v==='number')source+=`            attribute ${portNames.has(k)?'default_':''}${id(k)} : Real = ${v};\n`;}for(const name of portNames){const port=ports.find(p=>p.name===name);source+=`            port ${id(name)} : ~${n.type==='quantum'?'QuantumSignal':'Signal'};\n`;if(port)source+=`            doc /* ${id(name)}: ${doc(port.description||port.label||name)} Default: ${doc(port.default??'0')}. */\n`;}if(['function','calculus'].includes(n.type))source+=`            doc /* expression: ${doc(n.params.expression)} */\n`;if(n.source)source+=`            doc /* Visualization observes ${doc(n.source.id)}.${doc(n.source.port==='in'?n.source.inputPort||'x':'output')}. */\n`;source+='        }\n';}
  for(const e of model.edges)source+=`\n        connect ${id(e.from)}.output to ${id(e.to)}.${id(e.port)};`;
  return source+'\n    }\n}\n';}

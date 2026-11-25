@@ -130,6 +130,7 @@ export function formatTerm(term, depth = 4) {
 export function exportSymbolicGraph(analysis) {
   return {
     engine: ENGINE_VERSION,
+    ...(Object.keys(analysis.quantum||{}).length?{quantum:analysis.quantum}:{}),
     sourceSemantics: 'Distinct source blocks are independent; all uses of one source retain its identity, including feedback iterations.',
     terms: [...analysis.terms.values()].map(term => ({ ...term, ...(term.inputs ? { inputs: refInputs(term.inputs) } : {}) })),
     outputs: Object.fromEntries(Object.entries(analysis.laws).map(([id, law]) => [id, { root: law.term.id, cdf: law.cdf, definition: law.definition }])),

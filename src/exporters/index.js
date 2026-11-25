@@ -6,7 +6,7 @@ import juliaRuntime from './julia-runtime.js';
 
 export function exportPayload(model){
  const analysis=compileModel(model);
- return {schemaVersion:1,model:{id:model.id||'anonymous',name:model.name,engine:ENGINE_VERSION,iterations:analysis.iterations,samples:model.samples,seed:model.seed,nodes:model.nodes,edges:model.edges},graph:exportSymbolicGraph(analysis),visualizations:model.nodes.filter(n=>n.type==='tap').map(n=>({id:n.id,name:n.name,source:n.source,...(n.meridian?{meridian:meridianSpec(model,n)}:{}),...(n.orbitalCloud?{orbitalCloud:true}:{}),root:analysis.laws[n.id]?.term.id||null}))};
+ return {schemaVersion:1,model:{id:model.id||'anonymous',name:model.name,engine:ENGINE_VERSION,iterations:analysis.iterations,samples:model.samples,seed:model.seed,nodes:model.nodes,edges:model.edges},graph:exportSymbolicGraph(analysis),visualizations:model.nodes.filter(n=>n.type==='tap').map(n=>({id:n.id,name:n.name,source:n.source,...(meridianSpec(model,n,analysis)?{meridian:meridianSpec(model,n,analysis)}:{}),...(n.orbitalCloud?{orbitalCloud:true}:{}),root:analysis.laws[n.id]?.term.id||null}))};
 }
 export function generateScript(model,language='python'){
  const data=Buffer.from(JSON.stringify(exportPayload(model)),'utf8').toString('base64');

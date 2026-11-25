@@ -1,4 +1,5 @@
-import {hydrogenGroundState} from '../src/hydrogen.js';
+import {hydrogenState} from '../src/hydrogen.js';
+import legacyHydrogen from './fixtures/hydrogen-legacy.json' with {type:'json'};
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { compileModel, defaultModel, makeNode, symbolic, toSysML, exportSymbolicGraph } from '../src/engine.js';
@@ -32,7 +33,7 @@ test('custom feedback uses the explicit delay initial port and supports derived 
 test('a tap can observe any named custom input, including an unconnected default',()=>{const f=operation('custom','y',{expression:'alpha+beta'});f.inputPorts=[{name:'alpha',default:'1/3'},{name:'beta',default:'2'}];f.portMode='manual';const tap=makeNode('tap');tap.id='tap';tap.source={id:'y',port:'in',inputPort:'alpha'};const a=compileModel(graph([f,tap]));assert.deepEqual(a.errors,[]);assert.equal(a.laws.tap.term.value,'1/3');});
 
 test('hydrogen 1s amplitude and sphere probabilities agree at three probe radii', async () => {
-  const model = hydrogenGroundState();
+  const model = structuredClone(legacyHydrogen);
   for (const r of [0, 1, 2]) {
     model.nodes.find(node => node.id === 'probe').params.value = r;
     const analysis = compileModel(model);
@@ -48,7 +49,7 @@ test('hydrogen 1s amplitude and sphere probabilities agree at three probe radii'
 
 test('orbital detections preserve the radial CDF and have isotropic directions', async () => {
   const {positions,cloudRate} = await import('../src/orbital-cloud.js');
-  const law = compileModel(hydrogenGroundState()).laws.radialTap;
+  const law = compileModel(structuredClone(legacyHydrogen)).laws.radialTap;
   const rendered = createDistributionRenderer().render(law);
   assert.equal(cloudRate(law,rendered),2);
   const cloud = positions(rendered,30000,17);
@@ -70,4 +71,30 @@ test('2p meridian tap retains its equatorial node and samples the angular Born l
   assert.ok(Math.abs(density(0, 2) - Math.exp(-2)/(8*Math.PI)) < 1e-12);
   const cosineSquared = points.reduce((sum, [x,z,y]) => sum + z*z/(x*x+y*y+z*z), 0)/points.length;
   assert.ok(Math.abs(cosineSquared - 3/5) < 0.02);
+});
+
+test('the hydrogen operator graph responds to the Hamiltonian and quantum numbers', async()=>{
+  const model=hydrogenState(2,1,0);
+  const {meridianData,meridianSpec}=await import('../src/meridian.js');
+  const get=id=>model.nodes.find(node=>node.id===id);
+  const analyze=()=>{
+    const a=compileModel(model);
+    assert.deepEqual(a.errors,[]);
+    const field=meridianData(meridianSpec(model,get('field'),a),8,42);
+    return {density:field.density,energy:Number(createDistributionRenderer().render(a.laws.energy).stats.mean)};
+  };
+  const pz=analyze();
+  close(pz.energy,-1/8);close(pz.density(2,0),0);
+  close(pz.density(0,2),Math.exp(-2)/(8*Math.PI));
+  get('basis').params.m=1;
+  const ring=analyze();
+  close(ring.density(0,2),0);close(ring.density(2,0),Math.exp(-2)/(16*Math.PI));
+  get('potential').params.charge=2;
+  const ion=analyze();
+  close(ion.energy,-1/2);close(ion.density(1,0),8*ring.density(2,0));
+  get('kinetic').params.mass=.5;
+  close(analyze().energy,-1/4);
+  model.edges=model.edges.filter(e=>e.from!=='potential');
+  const broken=compileModel(model);
+  assert.ok(broken.errors.length);assert.equal(broken.quantum.field,undefined);
 });
