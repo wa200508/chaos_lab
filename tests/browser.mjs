@@ -18,6 +18,12 @@ try{
  assert.equal(await page.locator('.tap-node .histogram rect').count(),68);
  assert.equal(await page.locator('[data-action="select"]').textContent(),'');
  async function histogramCounts(){const data=await page.evaluate(()=>{const s=window.chaosLab.getState();return {rendered:s.renderer.render(s.sim.laws.logistic),errors:s.sim.errors,model:s.tabs[s.active].model};});assert.equal(data.rendered.status,'ready',JSON.stringify(data));return data.rendered.histogram.counts;}
+ const roleOf=id=>page.locator('#plane [data-node="'+id+'"]').getAttribute('data-role');
+ assert.equal(await roleOf('random'),'source');
+ assert.equal(await roleOf('logistic'),'derived');
+ assert.equal(await roleOf('parameter'),'');
+ assert.equal(await roleOf('outputTap'),'');
+ assert.equal(await page.locator('[data-block="normal"]').getAttribute('data-role'),'source');
  const original=await histogramCounts();
  await page.locator('[data-action="settings"]').click();await page.locator('#settings-seed').fill('999');await page.locator('[data-action="settingssubmit"]').click();
  await page.waitForFunction(()=>window.chaosLab.getState().tabs[window.chaosLab.getState().active].model.seed===999);
@@ -69,6 +75,9 @@ try{
  await page.locator('#new-template').selectOption('hydrogen');
  await page.locator('[data-action="newsubmit"]').click();
  await page.locator('.orbital-preview').click();
+ assert.equal(await roleOf('density'),'born');
+ assert.equal(await roleOf('field'),'sampler');
+ assert.equal(await roleOf('sphere'),'');
  const plot=page.locator('.orbital-stage canvas');
  const snapshot=()=>plot.evaluate(c=>c.toDataURL());
  const cloudImage=await snapshot();
@@ -85,6 +94,7 @@ try{
  await page.locator('[data-node="field"] .node-title').click();
  await page.locator('#enable-orbital').uncheck();
  assert.equal(await page.locator('.orbital-preview').count(),0);
+ assert.equal(await roleOf('field'),'');
  await page.locator('#enable-orbital').check();
  assert.equal(await page.locator('.orbital-preview').count(),1);
  assert.deepEqual(errors,[]);
