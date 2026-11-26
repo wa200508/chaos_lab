@@ -181,3 +181,37 @@ test('the receiver tap laws reproduce the two-stage Friis noise factor as gain c
    assert.equal(16 / snrOut, 1.25 + (5 - 1) / gain ** 2);
  }
 });
+
+test('water-level retracker estimates from gate powers and retains probability at the near gate', async () => {
+ const {waterLevelAltimeter} = await import('../src/water-level.js');
+ const model = waterLevelAltimeter();
+ function read() {
+   const a = compileModel(model);
+   assert.deepEqual(a.errors, []);
+   const renderer = createDistributionRenderer();
+   return {a, renderer, cdf: (tap, value) => renderer.cdf(a.laws[tap], value)};
+ }
+ const base = read();
+ assert.deepEqual(base.a.quantities.rangeTap.sources.slice().sort(), ['peak','scatter']);
+ // Independent integral over the gamma echo power and the Weibull background.
+ close(base.cdf('rangeTap', 4), .048618904, .002);
+ close(base.cdf('rangeTap', 4.3), .325932500, .002);
+ close(base.cdf('heightTap', 1.7), 1-.325932500, .002);
+ const plot = base.renderer.render(base.a.laws.rangeTap);
+ assert.equal(plot.status, 'ready');
+ close(plot.stats.mean, 4.323038675, .004);
+ close(plot.stats.sd, .126267261, .003);
+ const level = base.renderer.render(base.a.laws.heightTap);
+ close(plot.stats.mean + level.stats.mean, 6);
+ close(plot.stats.sd, level.stats.sd);
+ close(base.cdf('heightTap', 2-1e-9), 1-base.cdf('rangeTap', 4), .00001);
+ model.nodes.find(n=>n.id==='floor').params.b = 0;
+ model.nodes.find(n=>n.id==='truth').params.value = 4.7;
+ const clean = read();
+ close(clean.cdf('rangeTap',4.69999),0);
+ close(clean.cdf('rangeTap',4.70001),1);
+ const exact = clean.renderer.render(clean.a.laws.rangeTap);
+ close(exact.stats.mean, 4.7);
+ close(exact.stats.sd, 0);
+ for (const reading of sampleFinalDistribution(exact, 32, 42)) close(reading, 4.7);
+});

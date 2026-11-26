@@ -50,3 +50,11 @@ for tap, mean, variance in [('inputLaw', 4, 1), ('lnaLaw', 16, 20), ('outputLaw'
     term = receiver.PAYLOAD['graph']['outputs'][tap]['root']
     cdf, _, _ = receiver.numeric_descriptor(term)
     assert abs(cdf(mean + math.sqrt(variance)) - .8413447460685429) < 1e-10
+
+spec = importlib.util.spec_from_file_location('water_level', root / 'water_level.py')
+altimeter = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(altimeter)
+for tap, x, expected in [('rangeTap', 4.0, .048618904), ('rangeTap', 4.3, .325932500), ('heightTap', 1.7, .674067500)]:
+    term = altimeter.PAYLOAD['graph']['outputs'][tap]['root']
+    cdf, _, _ = altimeter.numeric_descriptor(term, plot_grid=True)
+    assert abs(cdf(x) - expected) < .002

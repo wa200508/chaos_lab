@@ -1,16 +1,16 @@
 {
   "name": "chaos-lab",
-  "version": "2.0.0-beta.1",
+  "version": "2.0.0-beta.2",
   "private": true,
   "type": "module",
   "scripts": {
     "build": "node scripts/build.mjs",
-    "check": "node --check src/app.js && node --test --test-force-exit tests/engine.test.js tests/repository.test.js tests/server.test.js tests/exporters.test.js && node tests/ui-smoke.mjs",
+    "check": "node --check src/app.js && node --test tests/engine.test.js tests/server.test.js tests/exporters.test.js && node --test --test-force-exit tests/repository.test.js && node tests/ui-smoke.mjs",
     "start": "node scripts/server.cjs",
     "dev": "node scripts/server.cjs",
     "package": "node scripts/package-release.mjs",
     "test:browser": "node tests/browser.mjs",
-    "test:exports": "node scripts/export-fixtures.mjs && python tests/export-python.py .export-test",
+    "test:exports": "node scripts/export-fixtures.mjs && python tests/export-python.py .export-test && python tests/verify_altimeter.py",
     "test:binary": "node scripts/smoke-binary.mjs"
   },
   "dependencies": {

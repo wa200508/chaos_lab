@@ -130,5 +130,19 @@ try{
  const rfLaw=await page.evaluate(()=>window.chaosLab.getState().sim.laws.outputLaw.cdf);
  assert.deepEqual(rfLaw,{kind:'normal',mean:'16',variance:'36'});
  assert.deepEqual(errors,[]);
+ await page.locator('[data-action="new"]').first().click();
+ await page.locator('#new-template').selectOption('water-level');
+ await page.locator('[data-action="newsubmit"]').click();
+ await page.locator('#plane [data-node="rangeTap"] .node-title').click();
+ assert.equal(await page.locator('#plane .histogram').count(),3);
+ assert.match(await page.locator('#inspector').innerText(),/Surface echo power/);
+ await page.locator('#plane [data-node="floor"] .node-title').click();
+ await page.locator('[data-param="b"]').fill('0.04');
+ await page.locator('[data-param="b"]').press('Tab');
+ const updatedMean = await page.evaluate(()=>{
+   const s=window.chaosLab.getState();return s.renderer.render(s.sim.laws.rangeTap).stats.mean;
+ });
+ assert.ok(updatedMean>4.39 && updatedMean<4.42);
+ assert.deepEqual(errors,[]);
  await context.close();
 }finally{if(browser)await browser.close();server.kill();}

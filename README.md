@@ -6,6 +6,12 @@ A visual studio for symbolic probability systems. Source blocks define probabili
 
 [Explore the hydrogen 1s ground-state example](docs/examples/hydrogen-1s.md)
 
+## Explore the sampling distribution of a radar range estimate
+
+Choose **New model → Radar · Water-level estimator**. A fixed water surface produces a fluctuating power echo across two receive gates. The receiver measures the threshold crossing and reports range and water level. Lower the residual background to see how the range bias and the probability of a clipped reading change. The walkthrough includes an independent variance check and a confidence interval for an observed reading. [Paper, plots, and local launch instructions](docs/examples/water-level-altimeter.md)
+
+![Water-level radar graph with the estimated range distribution selected](docs/screenshots/water-level-radar.png)
+
 ## Trace noise through a radio receiver
 
 Choose **New model → RF · Friis receiver chain**. Three taps show a carrier and its noise at the receiver input, after a low-noise amplifier, and after an intermediate-frequency amplifier. Change the first amplifier's amplitude gain from 4 to 2. The output becomes quieter, but the signal-to-noise ratio gets worse. The tap laws give a receiver noise figure of 1.76 dB before the change and 3.52 dB after it. [Walkthrough, paper, and exported plots](docs/examples/friis-receiver.md)
@@ -28,18 +34,18 @@ Native preview releases bundle the web app and its local server. **No Node, Pyth
 
 | Platform | Release asset | Start |
 | --- | --- | --- |
-| Windows 10/11 x64 | `chaos-lab-2.0.0-beta.1-windows-x64.zip` | Extract, then run `chaos-lab.exe`. |
-| Ubuntu 22.04/24.04 x64 | `chaos-lab-2.0.0-beta.1-ubuntu-x64.deb` | `sudo apt install ./chaos-lab-2.0.0-beta.1-ubuntu-x64.deb`, then `chaos-lab`. |
-| EL9 x64, including Rocky/Alma/RHEL 9 | `chaos-lab-2.0.0-beta.1-el9-x64.rpm` | `sudo dnf install ./chaos-lab-2.0.0-beta.1-el9-x64.rpm`, then `chaos-lab`. |
-| Linux x64 portable | `chaos-lab-2.0.0-beta.1-linux-x64.tar.gz` | Extract, then run `./chaos-lab`. |
-| Docker on Linux or Docker Desktop | `chaos-lab-2.0.0-beta.1-docker-amd64.tar.gz` | Load and run the image as shown below. |
+| Windows 10/11 x64 | `chaos-lab-2.0.0-beta.2-windows-x64.zip` | Extract, then run `chaos-lab.exe`. |
+| Ubuntu 22.04/24.04 x64 | `chaos-lab-2.0.0-beta.2-ubuntu-x64.deb` | `sudo apt install ./chaos-lab-2.0.0-beta.2-ubuntu-x64.deb`, then `chaos-lab`. |
+| EL9 x64, including Rocky/Alma/RHEL 9 | `chaos-lab-2.0.0-beta.2-el9-x64.rpm` | `sudo dnf install ./chaos-lab-2.0.0-beta.2-el9-x64.rpm`, then `chaos-lab`. |
+| Linux x64 portable | `chaos-lab-2.0.0-beta.2-linux-x64.tar.gz` | Extract, then run `./chaos-lab`. |
+| Docker on Linux or Docker Desktop | `chaos-lab-2.0.0-beta.2-docker-amd64.tar.gz` | Load and run the image as shown below. |
 
 These are unsigned preview builds. Releases include SHA-256 checksums. See [release and build instructions](docs/releases.md) for verification, architecture support, and the native test matrix.
 
 ```sh
 # Use the Docker image from a release; no registry sign-in is required.
-docker load -i chaos-lab-2.0.0-beta.1-docker-amd64.tar.gz
-docker run --rm -p 127.0.0.1:4173:4173 chaos-lab:2.0.0-beta.1
+docker load -i chaos-lab-2.0.0-beta.2-docker-amd64.tar.gz
+docker run --rm -p 127.0.0.1:4173:4173 chaos-lab:2.0.0-beta.2
 
 # Or build from a checkout:
 docker compose up --build

@@ -113,9 +113,9 @@ function source_distribution(name)
     end
 end
 
-const DESCRIPTORS=Dict{String,Any}()
-function numeric_descriptor(root)
-    get!(DESCRIPTORS,root) do
+const DESCRIPTORS=Dict{Tuple{String,Bool},Any}()
+function numeric_descriptor(root, plot_grid=false)
+    get!(DESCRIPTORS,(root,plot_grid)) do
         term=TERMS[root];kind=term["kind"]
         if kind=="constant"
             value=Float64(parse_math(term["value"]));return (cdf=y->Float64(y>=value),bounds=(value,value),method="point mass")
@@ -149,7 +149,7 @@ function numeric_descriptor(root)
         end
         inputs=term["inputs"];op=term["operation"];unary=haskey(inputs,"x")&&all(k=="x"||TERMS[t]["kind"]=="constant" for (k,t) in inputs)
         if unary
-            parent=numeric_descriptor(inputs["x"]);lo,hi=parent.bounds;p=Dict(k=>Float64(parse_math(TERMS[t]["value"])) for (k,t) in inputs if k!="x")
+            parent=numeric_descriptor(inputs["x"],plot_grid);lo,hi=parent.bounds;p=Dict(k=>Float64(parse_math(TERMS[t]["value"])) for (k,t) in inputs if k!="x")
             if op=="less" && get(TERMS[inputs["x"]],"family",nothing)=="gamma"
                 inside=parent.cdf(p["b"])
                 return (cdf=y->y<0 ? 0.0 : y<1 ? 1-inside : 1.0,bounds=(0.0,1.0),method="Gamma threshold probability")
@@ -191,6 +191,12 @@ function numeric_descriptor(root)
         end
         length(ids)<=3||error("Exact symbolic joint integral retained; visualization currently supports up to three source dimensions")
         distributions=[source_distribution(n) for n in ids]
+        if plot_grid && length(ids)>=2 && all(!(SOURCES[n]["family"] in ("bernoulli","poisson")) for n in ids)
+            order = length(ids)==2 ? 96 : 20
+            axes = [[quantile(d,(i-0.5)/order) for i in 1:order] for d in distributions]
+            values = sort!([numeric_value(root,Dict(zip(ids,point))) for point in vec(collect(Iterators.product(axes...)))])
+            return (cdf=y->searchsortedlast(values,y)/length(values), bounds=extrema(values), method="deterministic joint-CDF quadrature")
+        end
         function integrated_cdf(y)
             coordinates=zeros(length(ids))
             function integrate_dimension(i)
@@ -281,7 +287,7 @@ function plot_visualizations(output=nothing;bins=34,cdf_points=128)
     taps=[tap for tap in PAYLOAD["visualizations"] if get(tap,"root",nothing)!==nothing]
     panels=Any[]
     for tap in taps
-        d=numeric_descriptor(tap["root"]);lo,hi=d.bounds
+        d=numeric_descriptor(tap["root"],true);lo,hi=d.bounds
         # Infinite plotting windows are truncated only at visualization time.
         if !isfinite(lo);lo=-1.0;while d.cdf(lo)>1e-8;lo*=2;end;end
         if !isfinite(hi);hi=1.0;while d.cdf(hi)<1-1e-8;hi*=2;end;end
