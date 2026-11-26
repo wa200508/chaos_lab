@@ -42,3 +42,11 @@ furnace_root=furnace.PAYLOAD['graph']['outputs']['tapDiff']['root']
 cdf, _, _ = furnace.numeric_descriptor(furnace_root)
 assert abs(cdf(math.sqrt(.0018))-.8413447460685429)<1e-10
 assert furnace.PAYLOAD['graph']['quantities']['tapDiff']['canceled']==['temperature']
+
+spec = importlib.util.spec_from_file_location('rf_receiver', root / 'rf_receiver.py')
+receiver = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(receiver)
+for tap, mean, variance in [('inputLaw', 4, 1), ('lnaLaw', 16, 20), ('outputLaw', 32, 96)]:
+    term = receiver.PAYLOAD['graph']['outputs'][tap]['root']
+    cdf, _, _ = receiver.numeric_descriptor(term)
+    assert abs(cdf(mean + math.sqrt(variance)) - .8413447460685429) < 1e-10

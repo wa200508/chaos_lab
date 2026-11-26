@@ -24,3 +24,11 @@ Base.include(furnace,joinpath(root,"furnace.jl"))
 payload=getfield(furnace,:PAYLOAD)
 delta=Base.invokelatest(getfield(furnace,:numeric_descriptor),payload["graph"]["outputs"]["tapDiff"]["root"])
 @test Base.invokelatest(delta.cdf,sqrt(.0018)) ≈ .8413447460685429
+
+receiver = Module(:RFReceiverFixture)
+Base.include(receiver, joinpath(root, "rf_receiver.jl"))
+rf_outputs = getfield(receiver, :PAYLOAD)["graph"]["outputs"]
+for (tap, mean, variance) in [("inputLaw", 4, 1), ("lnaLaw", 16, 20), ("outputLaw", 32, 96)]
+    law = Base.invokelatest(getfield(receiver, :numeric_descriptor), rf_outputs[tap]["root"])
+    @test Base.invokelatest(law.cdf, mean + sqrt(variance)) ≈ .8413447460685429
+end

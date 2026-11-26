@@ -6,6 +6,12 @@ A visual studio for symbolic probability systems. Source blocks define probabili
 
 [Explore the hydrogen 1s ground-state example](docs/examples/hydrogen-1s.md)
 
+## Trace noise through a radio receiver
+
+Choose **New model → RF · Friis receiver chain**. Three taps show a carrier and its noise at the receiver input, after a low-noise amplifier, and after an intermediate-frequency amplifier. Change the first amplifier's amplitude gain from 4 to 2. The output becomes quieter, but the signal-to-noise ratio gets worse. The tap laws give a receiver noise figure of 1.76 dB before the change and 3.52 dB after it. [Walkthrough, paper, and exported plots](docs/examples/friis-receiver.md)
+
+![RF receiver dashboard with the output distribution and its three contributing noise sources](docs/screenshots/rf-receiver.png)
+
 ## Follow a shared source through a manufacturing line
 
 Choose **New model → Manufacturing · shared furnace**. Two parts have independent incoming thicknesses and pass through the same fluctuating furnace. Purple marks declared uncertain quantities and blue marks outputs that inherit uncertainty. Select a tap to inspect its units, distribution, effective sources, and contributions that cancel.

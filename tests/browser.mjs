@@ -115,5 +115,20 @@ try{
  assert.deepEqual(await page.evaluate(()=>window.chaosLab.getState().sim.quantities.tapDiff.sources.sort()),['stockA','stockB','temperature']);
  assert.deepEqual(errors,[]);
  console.log('Chromium passed: orbital cloud, slice, scale, PNG download,  offline startup, symbolic laws, CDF histograms, seed isolation, parameter changes, final-law visualization, split view, Python/Julia downloads, Git commit, twelve named custom inputs, manual add/remove/rename, drag wiring, endpoint reconnection, and wire rerouting.');
+ await page.locator('[data-action="new"]').first().click();
+ await page.locator('#new-template').selectOption('rf-receiver');
+ await page.locator('[data-action="newsubmit"]').click();
+ await page.locator('#plane [data-node="outputLaw"] .node-title').click();
+ assert.equal(await page.locator('#plane .histogram').count(),3);
+ assert.equal(await roleOf('ifNoise'),'source');
+ assert.equal(await roleOf('ifGain'),'derived');
+ assert.match(await page.locator('#inspector').innerText(),/LNA noise/);
+ if(process.env.CHAOS_CAPTURE_DIR)await page.screenshot({path:process.env.CHAOS_CAPTURE_DIR+'/rf-receiver.png'});
+ await page.locator('#plane [data-node="lnaGain"] .node-title').click();
+ await page.locator('[data-param="b"]').fill('2');
+ await page.locator('[data-param="b"]').press('Tab');
+ const rfLaw=await page.evaluate(()=>window.chaosLab.getState().sim.laws.outputLaw.cdf);
+ assert.deepEqual(rfLaw,{kind:'normal',mean:'16',variance:'36'});
+ assert.deepEqual(errors,[]);
  await context.close();
 }finally{if(browser)await browser.close();server.kill();}
