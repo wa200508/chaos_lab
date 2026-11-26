@@ -6,6 +6,12 @@ A visual studio for symbolic probability systems. Source blocks define probabili
 
 [Explore the hydrogen 1s ground-state example](docs/examples/hydrogen-1s.md)
 
+## Explore the sampling distribution of a radar range estimate
+
+Choose **New model → Radar · Water-level estimator**. A fixed water surface produces a fluctuating power echo across two receive gates. The receiver measures the threshold crossing and reports range and water level. Lower the residual background to see how the range bias and the probability of a clipped reading change. The walkthrough includes an independent variance check and a confidence interval for an observed reading. [Paper, plots, and local launch instructions](docs/examples/water-level-altimeter.md)
+
+![Water-level radar graph with the estimated range distribution selected](docs/screenshots/water-level-radar.png)
+
 ## Trace noise through a radio receiver
 
 Choose **New model → RF · Friis receiver chain**. Three taps show a carrier and its noise at the receiver input, after a low-noise amplifier, and after an intermediate-frequency amplifier. Change the first amplifier's amplitude gain from 4 to 2. The output becomes quieter, but the signal-to-noise ratio gets worse. The tap laws give a receiver noise figure of 1.76 dB before the change and 3.52 dB after it. [Walkthrough, paper, and exported plots](docs/examples/friis-receiver.md)

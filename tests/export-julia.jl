@@ -32,3 +32,11 @@ for (tap, mean, variance) in [("inputLaw", 4, 1), ("lnaLaw", 16, 20), ("outputLa
     law = Base.invokelatest(getfield(receiver, :numeric_descriptor), rf_outputs[tap]["root"])
     @test Base.invokelatest(law.cdf, mean + sqrt(variance)) ≈ .8413447460685429
 end
+
+altimeter = Module(:WaterLevelFixture)
+Base.include(altimeter, joinpath(root, "water_level.jl"))
+alt_outputs = getfield(altimeter, :PAYLOAD)["graph"]["outputs"]
+for (tap, x, expected) in [("rangeTap", 4.0, .048618904), ("rangeTap", 4.3, .325932500), ("heightTap", 1.7, .674067500)]
+    law = Base.invokelatest(getfield(altimeter, :numeric_descriptor), alt_outputs[tap]["root"], true)
+    @test Base.invokelatest(law.cdf, x) ≈ expected atol=.002
+end

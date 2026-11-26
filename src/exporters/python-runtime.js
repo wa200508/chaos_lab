@@ -1,4 +1,5 @@
 export default String.raw`import argparse
+import bisect
 import ast
 import functools
 import itertools
@@ -119,9 +120,9 @@ def numeric_function(root):
     term=TERMS[root]
     if term['kind']=='constant': return lambda assignment: constant(root)
     if term['kind']=='source': return lambda assignment: assignment[term['sourceId']]
-    symbols={key:sp.Symbol(key,real=True) for key in term['inputs']}
+    symbols={key:sp.Dummy('port_'+key,real=True) for key in term['inputs']}
     expression=apply_symbolic(term,symbols)
-    fn=sp.lambdify(list(symbols.values()),expression,modules='math',cse=True)
+    fn=sp.lambdify(list(symbols.values()),expression,modules='math',cse=True,dummify=True)
     functions=[numeric_function(value) for value in term['inputs'].values()]
     return lambda assignment: fn(*[f(assignment) for f in functions])
 
@@ -134,7 +135,7 @@ def source_distribution(name):
 
 
 @functools.lru_cache(None)
-def numeric_descriptor(root):
+def numeric_descriptor(root, plot_grid=False):
     """Numerical work begins here, only when a visualization requests a law."""
     from scipy import special, integrate
     term=TERMS[root]
@@ -172,7 +173,7 @@ def numeric_descriptor(root):
         return lambda y:sum(p for x,p in atoms if x<=y)/total,(min(x for x,_ in atoms),max(x for x,_ in atoms)),'joint finite PMF (Poisson tails truncated only for rendering)'
     inputs=term['inputs']; unary='x' in inputs and all(key=='x' or TERMS[value]['kind']=='constant' for key,value in inputs.items())
     if unary:
-        parent,bounds,_=numeric_descriptor(inputs['x']); lo,hi=bounds; op=term['operation']; values={k:constant(v) for k,v in inputs.items() if k!='x'}
+        parent,bounds,_=numeric_descriptor(inputs['x'], plot_grid); lo,hi=bounds; op=term['operation']; values={k:constant(v) for k,v in inputs.items() if k!='x'}
         if op=='less' and TERMS[inputs['x']].get('family')=='gamma':
             inside=parent(values['b'])
             return lambda y:0.0 if y<0 else 1-inside if y<1 else 1.0,(0,1),'Gamma threshold probability'
@@ -209,7 +210,14 @@ def numeric_descriptor(root):
             return lambda y:0.0 if y<lower else 1.0 if y>=upper else parent(y),(min(upper,max(lower,lo)),min(upper,max(lower,hi))),'mixed CDF including boundary atoms'
     if len(ids)>3:raise ValueError('The exact joint integral is retained; numerical visualization supports at most three independent source dimensions.')
     fn=numeric_function(root); distributions=[source_distribution(name) for name in ids]
-    # Deterministic probability quadrature, never draws from source distributions.
+    # A whole plot requests many CDF ordinates. Reuse one deterministic integral grid.
+    if plot_grid and len(ids) >= 2 and all(SOURCES[n]['family'] not in ('bernoulli', 'poisson') for n in ids):
+        order = 96 if len(ids) == 2 else 20
+        axes = [dist.ppf([(i + 0.5) / order for i in range(order)]) for dist in distributions]
+        values = sorted(fn(dict(zip(ids, point))) for point in itertools.product(*axes))
+        return (lambda y: bisect.bisect_right(values, y) / len(values),
+                (values[0], values[-1]), 'deterministic joint-CDF quadrature')
+    # Adaptive integration for individual CDF requests.
     def cdf(y):
         def integrand(*coordinates):
             assignment={name:dist.ppf(u) for name,dist,u in zip(ids,distributions,coordinates)}
@@ -285,7 +293,7 @@ def plot_visualizations(output=None,bins=34,cdf_points=128):
     if not rows: print('No attached visualization nodes.');return
     fig,axes=plt.subplots(rows,2,figsize=(12,3.3*rows),squeeze=False)
     for row,tap in enumerate(taps):
-        cdf,bounds,method=numeric_descriptor(tap['root']);lo,hi=bounds
+        cdf,bounds,method=numeric_descriptor(tap['root'], plot_grid=True);lo,hi=bounds
         if not math.isfinite(lo):
             lower=-1.0
             while cdf(lower)>1e-8:lower*=2
