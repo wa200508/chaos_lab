@@ -71,7 +71,20 @@ export function compileModel(model) {
    if(node.type==='parameter')outputs[node.id]=constant(node.params.value);
    if(node.type==='delay')delays.set(node.id,constant(node.params.initial??'1/2'));
  }catch(error){errors.push(`${node.name}: ${error.message}`);}
- const initialCache=new Map();
+ function balancedValues(node,edges,read){
+         const matrix=matrixRows(node.params.matrix);
+         const references=incoming(node.id).filter(binds);
+         for(const edge of references){
+           const variable=nodes.find(n=>n.id===edge.from);
+           if(variable?.op!=='quantity'||variable.domain!=='real'||Number(edge.port.slice(7))>matrix.length)
+             throw Error('Each unknown binds a declared real scalar.');
+         }
+         const rhs=matrix.map((_,i)=>{const edge=edges.find(e=>e.port==='rhs'+(i+1));
+           if(!edge||!read(edge.from))throw Error('Connect a scalar right-hand side for every balance.');
+           return read(edge.from);});
+         return solveBalances(matrix,rhs,factory);
+ }
+ const initialCache=new Map(), initialSolutions=new Map();
  function initialLaw(id,visiting=new Set()){
    if(initialCache.has(id))return initialCache.get(id);
    if(outputs[id])return outputs[id];
@@ -80,7 +93,16 @@ export function compileModel(model) {
    visiting=new Set([...visiting,id]);const edges=activeEdges(node);
    if(edges.some(e=>stateEdge(node,e)))throw Error('Initial-state law cannot depend on a feedback input.');
    const get=(port,fallback)=>{const edge=edges.find(e=>e.port===port);return edge?initialLaw(edge.from,visiting):constant(fallback);};
-   const term=expressionFor(node,get,0);initialCache.set(id,term);return term;
+   let term;
+   if(node.op==='linearSystem'){
+     const values=balancedValues(node,edges,from=>initialLaw(from,visiting));
+     initialSolutions.set(id,values);term=values[0];
+   }else if(node.op==='quantity'&&edges.length===1&&edges[0].solution?.startsWith('unknown')){
+     const provider=edges[0].from;
+     initialLaw(provider,visiting);
+     term=initialSolutions.get(provider)[Number(edges[0].solution.slice(7))-1];
+   }else term=expressionFor(node,get,0);
+   initialCache.set(id,term);return term;
  }
  for(const node of nodes.filter(n=>n.type==='delay')){const edge=incoming(node.id).find(e=>e.port==='initial');if(edge)try{delays.set(node.id,initialLaw(edge.from));}catch(error){errors.push(`${node.name}: ${error.message}`);}}
  const iterations=Math.min(100,Math.max(1,Math.trunc(Number(model.iterations)||1)));
@@ -111,17 +133,7 @@ export function compileModel(model) {
          if(field.observable)field.inputs.observable=field.observable;
          if(field.scalar!==undefined)outputs[node.id]=constant(field.scalar);
        }else if(node.op==='linearSystem'){
-         const matrix=matrixRows(node.params.matrix);
-         const references=incoming(node.id).filter(binds);
-         for(const edge of references){
-           const variable=nodes.find(n=>n.id===edge.from);
-           if(variable?.op!=='quantity'||variable.domain!=='real'||Number(edge.port.slice(7))>matrix.length)
-             throw Error('Each unknown binds a declared real scalar.');
-         }
-         const rhs=matrix.map((_,i)=>{const edge=ordinary.find(e=>e.port==='rhs'+(i+1));
-           if(!edge||!outputs[edge.from])throw Error('Connect a scalar right-hand side for every balance.');
-           return outputs[edge.from];});
-         const values=solveBalances(matrix,rhs,factory);
+         const values=balancedValues(node,ordinary,id=>outputs[id]);
          solutions.set(node.id,values);
          outputs[node.id]=values[0];
        }else if(node.op==='quantity'){
@@ -129,7 +141,7 @@ export function compileModel(model) {
          const provider=ordinary[0].from;
          if(node.domain==='space3'){
            if(quantum[provider]?.kind!=='born')throw Error('A spatial declaration requires a position probability law.');
-           quantum[node.id]={...quantum[provider],observable:quantum[provider].observable||node.id};
+           quantum[node.id]={...quantum[provider],inputs:{law:provider},observable:quantum[provider].observable||node.id};
          }else{
            const value=ordinary[0].solution?.startsWith('unknown')?solutions.get(provider)?.[Number(ordinary[0].solution.slice(7))-1]:outputs[provider];
            if(!value)throw Error('A real quantity requires a scalar law.');
