@@ -155,3 +155,29 @@ test('coupled balance equations solve for declared quantities over one joint set
  nodes[2].params.matrix='1,1;2,2';
  const singular=compileModel(m);assert.ok(singular.errors.some(e=>e.includes('unique joint solution')));assert.equal(singular.laws.y,undefined);
 });
+
+test('the receiver tap laws reproduce the two-stage Friis noise factor as gain changes', async () => {
+ const {rfReceiver} = await import('../src/rf-receiver.js');
+ const model = rfReceiver();
+ for (const gain of [4, 2, 1]) {
+   model.nodes.find(n => n.id === 'lnaGain').params.b = gain;
+   const {errors, laws, quantities} = compileModel(model);
+   assert.deepEqual(errors, []);
+   const expected = [
+     ['inputLaw', 4, 1, ['thermal']],
+     ['lnaLaw', 4 * gain, 1.25 * gain ** 2, ['thermal', 'lnaNoise']],
+     ['outputLaw', 8 * gain, 5 * gain ** 2 + 16, ['thermal', 'lnaNoise', 'ifNoise']]
+   ];
+   for (const [id, mean, variance, sources] of expected) {
+     const law = laws[id].cdf;
+     assert.equal(law.kind, 'normal');
+     assert.equal(Number(law.mean), mean);
+     const [numerator, denominator = 1] = law.variance.split('/').map(Number);
+     assert.equal(numerator / denominator, variance);
+     assert.deepEqual(quantities[id].sources, sources);
+   }
+   const output = laws.outputLaw.cdf;
+   const snrOut = Number(output.mean) ** 2 / Number(output.variance);
+   assert.equal(16 / snrOut, 1.25 + (5 - 1) / gain ** 2);
+ }
+});
