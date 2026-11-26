@@ -27,9 +27,9 @@ Stronger background makes the echo cross the threshold earlier. A weak surface e
 
 ## From a sampling distribution to a confidence interval
 
-Let (A) be the echo peak and (B) the residual background, in normalized power units. In this one-metre gate pair, the power slope is (A/2) per metre, so a background offset shifts the inferred range towards the sensor by (D=2B/A) metres. For a true range (r) the receiver reports `clip(r − D, 4, 5)`. The block graph derives this result from the two powers.
+Let `A` be the echo peak and `B` the residual background, in normalized power units. In this one-metre gate pair, the power slope is `A/2` per metre, so a background offset shifts the inferred range towards the sensor by `D=2B/A` metres. For a true range `r` the receiver reports `clip(r − D, 4, 5)`. The block graph derives this result from the two powers.
 
-For background scale (s), conditional on (A=a), the probability that the shift exceeds (d) metres is `exp(−(ad/(2s))²)` for (d≥0). Integrating this quantity over the gamma peak law gives the independent benchmarks above. The default shift's 2.5% and 97.5% quantiles are **0.02293 m** and **0.63637 m**. Inverting the central 95% of the measurement law, an interior reading of **4.25 m** gives a model-based confidence interval of **[4.273, 4.886] m** for the true range. For a reading clipped to **4.00 m**, inversion gives **[4.000, 4.636] m**. The clipping can make coverage conservative. These intervals assume the specified power laws and known gate geometry.
+For background scale `s`, conditional on `A=a`, the probability that the shift exceeds `d` metres is `exp(−(ad/(2s))²)` for `d≥0`. Integrating this quantity over the gamma peak law gives the independent benchmarks above. The default shift's 2.5% and 97.5% quantiles are **0.02293 m** and **0.63637 m**. Inverting the central 95% of the measurement law, an interior reading of **4.25 m** gives a model-based confidence interval of **[4.273, 4.886] m** for the true range. For a reading clipped to **4.00 m**, inversion gives **[4.000, 4.636] m**. The clipping can make coverage conservative. These intervals assume the specified power laws and known gate geometry.
 
 ## Run locally
 
