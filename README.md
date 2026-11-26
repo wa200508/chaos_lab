@@ -34,18 +34,18 @@ Native preview releases bundle the web app and its local server. **No Node, Pyth
 
 | Platform | Release asset | Start |
 | --- | --- | --- |
-| Windows 10/11 x64 | `chaos-lab-2.0.0-beta.1-windows-x64.zip` | Extract, then run `chaos-lab.exe`. |
-| Ubuntu 22.04/24.04 x64 | `chaos-lab-2.0.0-beta.1-ubuntu-x64.deb` | `sudo apt install ./chaos-lab-2.0.0-beta.1-ubuntu-x64.deb`, then `chaos-lab`. |
-| EL9 x64, including Rocky/Alma/RHEL 9 | `chaos-lab-2.0.0-beta.1-el9-x64.rpm` | `sudo dnf install ./chaos-lab-2.0.0-beta.1-el9-x64.rpm`, then `chaos-lab`. |
-| Linux x64 portable | `chaos-lab-2.0.0-beta.1-linux-x64.tar.gz` | Extract, then run `./chaos-lab`. |
-| Docker on Linux or Docker Desktop | `chaos-lab-2.0.0-beta.1-docker-amd64.tar.gz` | Load and run the image as shown below. |
+| Windows 10/11 x64 | `chaos-lab-2.0.0-beta.2-windows-x64.zip` | Extract, then run `chaos-lab.exe`. |
+| Ubuntu 22.04/24.04 x64 | `chaos-lab-2.0.0-beta.2-ubuntu-x64.deb` | `sudo apt install ./chaos-lab-2.0.0-beta.2-ubuntu-x64.deb`, then `chaos-lab`. |
+| EL9 x64, including Rocky/Alma/RHEL 9 | `chaos-lab-2.0.0-beta.2-el9-x64.rpm` | `sudo dnf install ./chaos-lab-2.0.0-beta.2-el9-x64.rpm`, then `chaos-lab`. |
+| Linux x64 portable | `chaos-lab-2.0.0-beta.2-linux-x64.tar.gz` | Extract, then run `./chaos-lab`. |
+| Docker on Linux or Docker Desktop | `chaos-lab-2.0.0-beta.2-docker-amd64.tar.gz` | Load and run the image as shown below. |
 
 These are unsigned preview builds. Releases include SHA-256 checksums. See [release and build instructions](docs/releases.md) for verification, architecture support, and the native test matrix.
 
 ```sh
 # Use the Docker image from a release; no registry sign-in is required.
-docker load -i chaos-lab-2.0.0-beta.1-docker-amd64.tar.gz
-docker run --rm -p 127.0.0.1:4173:4173 chaos-lab:2.0.0-beta.1
+docker load -i chaos-lab-2.0.0-beta.2-docker-amd64.tar.gz
+docker run --rm -p 127.0.0.1:4173:4173 chaos-lab:2.0.0-beta.2
 
 # Or build from a checkout:
 docker compose up --build

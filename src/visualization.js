@@ -125,6 +125,11 @@ export function createDistributionRenderer(options = {}) {
   const cache = new Map(), materialized = new Map();
   let cdfCalls = 0;
   function guard(descriptor) {
+    const [lo, hi] = descriptor.support;
+    if (lo === hi && Number.isFinite(lo)) {
+      descriptor.moments = {mean: lo, variance: 0};
+      descriptor.atoms = [{value: lo, mass: 1}];
+    }
     const raw = descriptor.cdf;
     descriptor.cdf = y => {
       if (++cdfCalls > (options.maxCdfCalls || 25000000)) throw Error('CDF evaluation budget reached. The exact symbolic law is retained; reduce feedback iterations or visualization resolution.');
@@ -162,7 +167,8 @@ export function createDistributionRenderer(options = {}) {
     }
     integrate(0, 1);
     const result = discreteDescriptor(atoms, `Numerical joint-CDF quadrature · ${cells.toLocaleString()} deterministic cells`);
-    result.quadrature = true; result.discrete = false; result.atoms = []; return result;
+    result.quadrature = true; result.discrete = false;
+    result.integrationGrid = result.atoms; result.atoms = []; return result;
   }
   function buildUncached(term) {
     if (term.kind === 'constant') return point(number(term.value));
@@ -186,6 +192,7 @@ export function createDistributionRenderer(options = {}) {
     if ([...law.sources.values()].every(source => ['bernoulli', 'poisson'].includes(source.family))) return discreteJoint(term, law.sources);
     const { x, b, r } = term.inputs, scalarInput = input => input?.kind === 'constant' ? number(input.value) : null;
     const bv = scalarInput(b), rv = scalarInput(r);
+    if (x?.kind === 'constant' && b && term.operation === 'subtract') return affine(build(b), -1, number(x.value));
     const unary = x && Object.entries(term.inputs).every(([key, input]) => key === 'x' || input.kind === 'constant');
     if (unary) {
       const p = build(x), [lo, hi] = p.support;
@@ -224,7 +231,11 @@ export function createDistributionRenderer(options = {}) {
         const lower = term.operation === 'min' ? -Infinity : term.operation === 'max' ? bv : scalarInput(term.inputs.min);
         const upper = term.operation === 'max' ? Infinity : term.operation === 'min' ? bv : scalarInput(term.inputs.max);
         if (lower > upper) throw Error('Clamp requires lower ≤ upper.');if(lower===upper)return point(lower);
-        return { cdf: y => y < lower ? 0 : y >= upper ? 1 : p.cdf(y), support: [Math.min(upper, Math.max(lower, lo)), Math.min(upper, Math.max(lower, hi))], atoms: [{ value: lower, mass: p.cdf(lower) }, { value: upper, mass: 1 - p.cdf(upper)+atomMass(p,upper) },...(p.atoms||[]).filter(a=>a.value>lower&&a.value<upper)].filter(a => Number.isFinite(a.value) && a.mass > 0), method: 'Analytic mixed law · boundary point masses retained' };
+        const clip = value => Math.min(upper, Math.max(lower, value));
+        // Use the same integration weights for moments as for the displayed CDF.
+        const clipped = p.integrationGrid && discreteDescriptor(p.integrationGrid.map(({value,mass}) => ({value: clip(value), mass})));
+        return { ...(clipped ? {moments: clipped.moments, integrationGrid: clipped.atoms} : {}),
+          cdf: y => y < lower ? 0 : y >= upper ? 1 : p.cdf(y), support: [Math.min(upper, Math.max(lower, lo)), Math.min(upper, Math.max(lower, hi))], atoms: [{ value: lower, mass: p.cdf(lower) }, { value: upper, mass: 1 - p.cdf(upper)+atomMass(p,upper) },...(p.atoms||[]).filter(a=>a.value>lower&&a.value<upper)].filter(a => Number.isFinite(a.value) && a.mass > 0), method: 'Analytic mixed law · boundary point masses retained' };
       }
       if (['greater', 'less', 'equal', 'not', 'and', 'or', 'switch'].includes(term.operation)) {
         const atZero = (p.atoms || []).filter(a => a.value === 0).reduce((s, a) => s + a.mass, 0);

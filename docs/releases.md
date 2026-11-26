@@ -2,7 +2,7 @@
 
 ## Artifacts
 
-The first symbolic-engine preview is `v2.0.0-beta.1`. Download assets and `SHA256SUMS.txt` from GitHub Releases.
+The estimator preview is `v2.0.0-beta.2`. Download assets and `SHA256SUMS.txt` from GitHub Releases.
 
 - Windows x64 ZIP: bundled native executable, start instructions, license, and export environments.
 - Linux x64 portable tarball: bundled native executable and the same auxiliary files.
@@ -23,7 +23,7 @@ sha256sum -c SHA256SUMS.txt --ignore-missing
 Windows PowerShell:
 
 ```powershell
-Get-FileHash .\chaos-lab-2.0.0-beta.1-windows-x64.zip -Algorithm SHA256
+Get-FileHash .\chaos-lab-2.0.0-beta.2-windows-x64.zip -Algorithm SHA256
 ```
 
 Compare the hash with the corresponding line in `SHA256SUMS.txt`.
@@ -60,10 +60,10 @@ The output directory is `releases/`. This preview has no native cross-compilatio
 To create a later release:
 
 ```sh
-npm version 2.0.0-beta.2 --no-git-tag-version
+npm version 2.0.0-beta.3 --no-git-tag-version
 # Update release notes; build, test, and commit the source and lockfile.
-git tag v2.0.0-beta.2
-git push github main v2.0.0-beta.2
+git tag v2.0.0-beta.3
+git push origin main v2.0.0-beta.3
 ```
 
 The workflow needs the repository's standard GitHub Actions `contents: write` permission for its final publication job. No Docker registry secret is required because the image is distributed as a release archive.

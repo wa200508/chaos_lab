@@ -31,6 +31,12 @@ Let `A` be the echo peak and `B` the residual background, in normalized power un
 
 For background scale `s`, conditional on `A=a`, the probability that the shift exceeds `d` metres is `exp(−(ad/(2s))²)` for `d≥0`. Integrating this quantity over the gamma peak law gives the independent benchmarks above. The default shift's 2.5% and 97.5% quantiles are **0.02293 m** and **0.63637 m**. Inverting the central 95% of the measurement law, an interior reading of **4.25 m** gives a model-based confidence interval of **[4.273, 4.886] m** for the true range. For a reading clipped to **4.00 m**, inversion gives **[4.000, 4.636] m**. The clipping can make coverage conservative. These intervals assume the specified power laws and known gate geometry.
 
+## Independent audit
+
+A second implementation generated four complex Gaussian looks per acquisition, detected and averaged their powers, added a common Weibull background to the two gates, and reconstructed the range. With one million acquisitions at each setting, the default mean range was **4.32313 m**, variance **0.015930 m²**, and near-gate frequency **4.8701%**. At background scale 0.04 the observed near-gate frequency was **0.6223%**. With zero background every reconstruction recovered 4.50 m to floating-point precision.
+
+At the default scale and a true range of 4.50 m, the interval procedure above covered the truth **97.5016%** of the time. The exact coverage at this setting is **97.5%** because clipping removes one way to exclude the truth. At scale 0.04 the audit observed **94.9989%**, against **95%** from the measurement law. This verification simulation runs separately from the symbolic dashboard. Reproduce it with `python tests/verify_altimeter.py` using NumPy and SciPy.
+
 ## Run locally
 
 With Node.js 24 installed, start the bundled dashboard from this example branch.

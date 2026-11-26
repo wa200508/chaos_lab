@@ -201,9 +201,17 @@ test('water-level retracker estimates from gate powers and retains probability a
  assert.equal(plot.status, 'ready');
  close(plot.stats.mean, 4.323038675, .004);
  close(plot.stats.sd, .126267261, .003);
+ const level = base.renderer.render(base.a.laws.heightTap);
+ close(plot.stats.mean + level.stats.mean, 6);
+ close(plot.stats.sd, level.stats.sd);
+ close(base.cdf('heightTap', 2-1e-9), 1-base.cdf('rangeTap', 4), .00001);
  model.nodes.find(n=>n.id==='floor').params.b = 0;
  model.nodes.find(n=>n.id==='truth').params.value = 4.7;
  const clean = read();
  close(clean.cdf('rangeTap',4.69999),0);
  close(clean.cdf('rangeTap',4.70001),1);
+ const exact = clean.renderer.render(clean.a.laws.rangeTap);
+ close(exact.stats.mean, 4.7);
+ close(exact.stats.sd, 0);
+ for (const reading of sampleFinalDistribution(exact, 32, 42)) close(reading, 4.7);
 });
